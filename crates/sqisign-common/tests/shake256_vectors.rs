@@ -16,8 +16,10 @@
 use sha3::digest::{ExtendableOutput, Update, XofReader};
 use sqisign_vectors::{decode, load};
 
-const VECTORS: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/../../vectors/common/shake256.json");
+const VECTORS: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../vectors/common/shake256.json"
+);
 
 fn oracle_shake256(input: &[u8], out_len: usize) -> Vec<u8> {
     let mut hasher = sha3::Shake256::default();
@@ -63,7 +65,8 @@ fn shake256_matches_reference_vectors() {
 
         let got = oracle_shake256(&input, outlen);
         assert_eq!(
-            got, expected,
+            got,
+            expected,
             "vector {} diverged from the C reference (inlen={}, outlen={})",
             v.id,
             input.len(),
