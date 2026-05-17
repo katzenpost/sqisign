@@ -1,0 +1,17 @@
+[package]
+name = "sqisign-gf"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "SQIsign GF(p) and GF(p^2) arithmetic, the performance-critical layer. Mirrors vendor/the-sqisign/src/gf."
+
+[dependencies]
+sqisign-common.workspace = true
+sqisign-mp.workspace = true
+
+[dev-dependencies]
+sqisign-vectors.workspace = true
+hex.workspace = true
+proptest.workspace = true
+criterion.workspace = true

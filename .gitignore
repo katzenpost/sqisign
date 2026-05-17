@@ -1,0 +1,19 @@
+# Rust build artifacts
+/target
+**/*.rs.bk
+Cargo.lock.orig
+
+# Instrumented C reference build tree (out-of-tree, never committed)
+/build-instrumented/
+
+# Raw binary dump logs emitted by the instrumented reference. These are an
+# intermediate artifact: vector-gen consumes them to produce the canonical
+# JSON under vectors/, which IS committed. The raw logs are not.
+/dumps/
+*.vecdump
+
+# Optional CBOR cache, regenerated from the canonical JSON on demand.
+/vectors-cache/
+
+# Criterion output
+/target/criterion/

@@ -1,0 +1,20 @@
+[package]
+name = "sqisign-id2iso"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "SQIsign ideal-to-isogeny translation. Verification uses one direction; signing uses both. Mirrors vendor/the-sqisign/src/id2iso."
+
+[dependencies]
+sqisign-common.workspace = true
+sqisign-gf.workspace = true
+sqisign-ec.workspace = true
+sqisign-precomp.workspace = true
+sqisign-quaternion.workspace = true
+
+[dev-dependencies]
+sqisign-vectors.workspace = true
+hex.workspace = true
+proptest.workspace = true
+criterion.workspace = true

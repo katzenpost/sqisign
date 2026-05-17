@@ -1,0 +1,22 @@
+[package]
+name = "sqisign-verify"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "SQIsign top-level Verify protocol. Standalone: must build and pass tests with sqisign-sign and the full quaternion/id2iso paths excluded, so Katzenpost mix nodes pull no signing code."
+
+[dependencies]
+sqisign-common.workspace = true
+sqisign-gf.workspace = true
+sqisign-ec.workspace = true
+sqisign-precomp.workspace = true
+sqisign-id2iso.workspace = true
+sqisign-quaternion.workspace = true
+sqisign-hd.workspace = true
+
+[dev-dependencies]
+sqisign-vectors.workspace = true
+hex.workspace = true
+proptest.workspace = true
+criterion.workspace = true

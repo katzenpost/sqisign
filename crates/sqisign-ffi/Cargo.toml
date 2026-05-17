@@ -1,0 +1,18 @@
+[package]
+name = "sqisign-ffi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "C ABI surface (NIST sign/verify API) for Python (pyo3/maturin) and Go (cgo) bindings. Phase 4."
+
+[lib]
+# cdylib + staticlib for Go cgo; rlib so Rust integration tests can link it.
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[features]
+default = []
+sign = ["sqisign/sign"]
+
+[dependencies]
+sqisign.workspace = true

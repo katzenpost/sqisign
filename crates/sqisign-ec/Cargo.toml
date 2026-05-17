@@ -1,0 +1,17 @@
+[package]
+name = "sqisign-ec"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "SQIsign elliptic curve point operations, isogeny computation, pairings. Mirrors vendor/the-sqisign/src/ec."
+
+[dependencies]
+sqisign-common.workspace = true
+sqisign-gf.workspace = true
+
+[dev-dependencies]
+sqisign-vectors.workspace = true
+hex.workspace = true
+proptest.workspace = true
+criterion.workspace = true

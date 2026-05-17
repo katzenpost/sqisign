@@ -1,0 +1,18 @@
+[package]
+name = "sqisign-hd"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "SQIsign (2,2)-isogenies in the theta model. Mirrors vendor/the-sqisign/src/hd."
+
+[dependencies]
+sqisign-common.workspace = true
+sqisign-gf.workspace = true
+sqisign-ec.workspace = true
+
+[dev-dependencies]
+sqisign-vectors.workspace = true
+hex.workspace = true
+proptest.workspace = true
+criterion.workspace = true

@@ -1,0 +1,21 @@
+[package]
+name = "sqisign-common"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "SQIsign common: hashing (SHA-3/SHAKE), seed expansion, PRNG, memory utilities. Mirrors vendor/the-sqisign/src/common."
+
+[dependencies]
+
+[dev-dependencies]
+sqisign-vectors.workspace = true
+# Phase 0 oracle only. This is not SQIsign code; it lets the differential
+# harness be exercised end-to-end before any primitive is ported.
+sha3.workspace = true
+hex.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "shake256"
+harness = false

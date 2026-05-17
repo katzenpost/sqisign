@@ -1,0 +1,20 @@
+[package]
+name = "sqisign"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "SQIsign umbrella crate. Verify-only by default; the signing path is opt-in behind the `sign` feature so verify-only consumers (Katzenpost mix nodes and clients) pull no signing dependencies."
+
+[features]
+default = []
+# Opt-in. Leaving this off keeps the dependency tree to the verification path.
+sign = ["dep:sqisign-sign"]
+
+[dependencies]
+sqisign-verify.workspace = true
+sqisign-sign = { workspace = true, optional = true }
+
+[dev-dependencies]
+sqisign-vectors.workspace = true
+hex.workspace = true

@@ -1,0 +1,58 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/sqisign-common",
+    "crates/sqisign-mp",
+    "crates/sqisign-gf",
+    "crates/sqisign-ec",
+    "crates/sqisign-precomp",
+    "crates/sqisign-quaternion",
+    "crates/sqisign-id2iso",
+    "crates/sqisign-hd",
+    "crates/sqisign-verify",
+    "crates/sqisign-sign",
+    "crates/sqisign",
+    "crates/sqisign-ffi",
+    "crates/sqisign-vectors",
+    "tools/vector-gen",
+]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.94"
+license = "LGPL-3.0-or-later"
+repository = "local"
+# The C reference at this commit is the canonical oracle. Keep in lockstep
+# with UPSTREAM.md; CI verifies the two agree.
+version = "0.0.0"
+
+[workspace.dependencies]
+# Internal crates referenced by path so the dependency graph mirrors the C
+# sub-library graph exactly (see vendor/the-sqisign/src).
+sqisign-common = { path = "crates/sqisign-common" }
+sqisign-mp = { path = "crates/sqisign-mp" }
+sqisign-gf = { path = "crates/sqisign-gf" }
+sqisign-ec = { path = "crates/sqisign-ec" }
+sqisign-precomp = { path = "crates/sqisign-precomp" }
+sqisign-quaternion = { path = "crates/sqisign-quaternion" }
+sqisign-id2iso = { path = "crates/sqisign-id2iso" }
+sqisign-hd = { path = "crates/sqisign-hd" }
+sqisign-verify = { path = "crates/sqisign-verify" }
+sqisign-sign = { path = "crates/sqisign-sign" }
+sqisign = { path = "crates/sqisign" }
+sqisign-vectors = { path = "crates/sqisign-vectors" }
+
+# Third-party. Pinned conservatively; bumps are reviewed for semantic drift in
+# primitive operations (see Escalation Triggers in the plan).
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+hex = "0.4"
+proptest = "1"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+# Dev-only oracle: a known-good SHAKE for Phase 0 to exercise the harness
+# end-to-end without writing any SQIsign code.
+sha3 = "0.10"
+
+[profile.bench]
+debug = true

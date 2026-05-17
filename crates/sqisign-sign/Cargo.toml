@@ -1,0 +1,19 @@
+[package]
+name = "sqisign-sign"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "SQIsign KeyGen and Sign protocols. Pulls the full quaternion/id2iso paths. Mirrors vendor/the-sqisign/src/signature."
+
+[dependencies]
+sqisign-common.workspace = true
+sqisign-quaternion.workspace = true
+sqisign-id2iso.workspace = true
+sqisign-verify.workspace = true
+
+[dev-dependencies]
+sqisign-vectors.workspace = true
+hex.workspace = true
+proptest.workspace = true
+criterion.workspace = true

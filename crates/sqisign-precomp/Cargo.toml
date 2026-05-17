@@ -1,0 +1,16 @@
+[package]
+name = "sqisign-precomp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "SQIsign precomputed constants, copied verbatim from the reference with a re-derivation verification test. Mirrors vendor/the-sqisign/src/precomp."
+
+[dependencies]
+sqisign-common.workspace = true
+sqisign-gf.workspace = true
+sqisign-ec.workspace = true
+
+[dev-dependencies]
+sqisign-vectors.workspace = true
+hex.workspace = true
