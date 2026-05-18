@@ -1,0 +1,23 @@
+[package]
+name = "sqisign-common-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Own workspace: cargo-fuzz crates must not be members of the parent
+# workspace (they pin a nightly-ish toolchain and libfuzzer-sys).
+[workspace]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+sqisign-common = { path = ".." }
+
+[[bin]]
+name = "shake256"
+path = "fuzz_targets/shake256.rs"
+test = false
+doc = false
+bench = false

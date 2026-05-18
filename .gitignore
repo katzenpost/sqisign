@@ -17,3 +17,10 @@ Cargo.lock.orig
 
 # Criterion output
 /target/criterion/
+
+# cargo-fuzz: commit the harness (Cargo.toml, fuzz_targets/), never the
+# build tree, generated corpus, or crash artifacts.
+**/fuzz/target/
+**/fuzz/corpus/
+**/fuzz/artifacts/
+**/fuzz/Cargo.lock

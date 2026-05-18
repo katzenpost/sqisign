@@ -7,13 +7,17 @@ license.workspace = true
 description = "SQIsign common: hashing (SHA-3/SHAKE), seed expansion, PRNG, memory utilities. Mirrors vendor/the-sqisign/src/common."
 
 [dependencies]
+# The reference's common/fips202.c is a standard FIPS-202 Keccak. We do not
+# hand-roll Keccak: a standardized primitive gains nothing from a bespoke
+# reimplementation and loses the scrutiny the audited RustCrypto sha3 crate
+# has had. Behavioural equivalence to the C reference is not assumed; it is
+# proven by the committed C-derived vectors (tests/shake256_vectors.rs).
+sha3.workspace = true
 
 [dev-dependencies]
 sqisign-vectors.workspace = true
-# Phase 0 oracle only. This is not SQIsign code; it lets the differential
-# harness be exercised end-to-end before any primitive is ported.
-sha3.workspace = true
 hex.workspace = true
+proptest.workspace = true
 criterion.workspace = true
 
 [[bench]]

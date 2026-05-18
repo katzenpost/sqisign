@@ -7,27 +7,19 @@
 //!   -> sqisign-vectors::load -> bit-compare here
 //! ```
 //!
-//! There is deliberately no `sqisign-common` code under test yet. The oracle
-//! is the known-good `sha3` crate. When `common`'s own SHAKE lands in
-//! Phase 1, only the `oracle_shake256` body changes; the harness, the
-//! vectors, and this assertion stay exactly as they are. That is the point:
-//! the scaffolding is proven correct before any primitive depends on it.
+//! As of Phase 1 this exercises the ported `sqisign_common::shake256`
+//! against the committed C-derived vectors. Exactly as foretold in Phase 0,
+//! only the call under test changed: the harness, the vectors, and the
+//! bit-compare assertion are untouched. The scaffolding was proven before
+//! the primitive depended on it, and the primitive now stands on it.
 
-use sha3::digest::{ExtendableOutput, Update, XofReader};
+use sqisign_common::shake256;
 use sqisign_vectors::{decode, load};
 
 const VECTORS: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../vectors/common/shake256.json"
 );
-
-fn oracle_shake256(input: &[u8], out_len: usize) -> Vec<u8> {
-    let mut hasher = sha3::Shake256::default();
-    hasher.update(input);
-    let mut out = vec![0u8; out_len];
-    hasher.finalize_xof().read(&mut out);
-    out
-}
 
 fn le_usize(bytes: &[u8]) -> usize {
     let mut acc = 0u64;
@@ -63,7 +55,8 @@ fn shake256_matches_reference_vectors() {
             v.id
         );
 
-        let got = oracle_shake256(&input, outlen);
+        let mut got = vec![0u8; outlen];
+        shake256(&input, &mut got);
         assert_eq!(
             got,
             expected,

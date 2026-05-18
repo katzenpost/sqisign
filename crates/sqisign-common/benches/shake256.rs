@@ -2,22 +2,12 @@
 //! test as the plan requires (every test ships a benchmark in the same
 //! commit).
 //!
-//! It currently times the `sha3` oracle, not ported code, because nothing
-//! is ported yet. When `sqisign-common`'s SHAKE lands in Phase 1 this body
-//! swaps to the ported implementation with the same inputs, so the recorded
-//! baseline transfers and the regression gate stays meaningful across the
-//! handover.
+//! As of Phase 1 this times the ported `sqisign_common::shake256` with the
+//! same inputs the Phase 0 placeholder used, so the recorded baseline
+//! transfers across the handover and the regression gate stays meaningful.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
-use sha3::digest::{ExtendableOutput, Update, XofReader};
-
-fn shake256(input: &[u8], out_len: usize) -> Vec<u8> {
-    let mut hasher = sha3::Shake256::default();
-    hasher.update(input);
-    let mut out = vec![0u8; out_len];
-    hasher.finalize_xof().read(&mut out);
-    out
-}
+use sqisign_common::hash::shake256_vec as shake256;
 
 /// Regression-gate self-test hook. `SQISIGN_BENCH_SLOWDOWN=N` makes every
 /// iteration do N extra hash passes, deliberately regressing the benchmark
