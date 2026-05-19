@@ -43,6 +43,10 @@ name = "mp_neg"
 harness = false
 
 [[bench]]
+name = "mp_copy"
+harness = false
+
+[[bench]]
 name = "mp_shiftl"
 harness = false
 

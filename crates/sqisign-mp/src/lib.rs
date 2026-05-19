@@ -40,6 +40,8 @@
 //! - [`mp_mod_2exp`] is `mp_mod_2exp(a, e, nwords)`: in-place
 //!   `a = a mod 2^e` (limb mask plus zero-fill, no-op when `e` covers
 //!   the full width). Correct; 1231 vectors all satisfy `a mod 2^e`.
+//! - [`mp_copy`] is `mp_copy(b, a, nwords)`: a plain limb-for-limb copy
+//!   (`b == a`). No quirk; 1021 vectors.
 //! - [`mp_neg`] is `mp_neg(a, nwords)`. **Third faithful reproduction**:
 //!   the reference adds the two's-complement `+1` to limb 0 only with no
 //!   carry propagation, so it equals `-a` iff `a[0] != 0`. 1042 vectors,
@@ -392,6 +394,21 @@ pub fn mp_neg(a: &mut [u64]) {
     }
 }
 
+/// Copy `a` into `b`, limb for limb, mirroring the reference's
+/// `void mp_copy(digit_t *b, const digit_t *a, size_t nwords)`. A plain
+/// copy with no quirk; all 1021 committed vectors have `b == a`.
+///
+/// # Panics
+/// If `a` and `b` do not share one length (the reference's implicit
+/// `nwords` contract, made explicit and checked here).
+pub fn mp_copy(b: &mut [u64], a: &[u64]) {
+    assert!(
+        a.len() == b.len(),
+        "mp_copy: a and b must share one limb count (nwords)"
+    );
+    b.copy_from_slice(a);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -411,6 +428,19 @@ mod tests {
         let mut c = [0u64; 2];
         mp_add(&mut c, &[u64::MAX, u64::MAX], &[1, 0]);
         assert_eq!(c, [0, 0]);
+    }
+
+    #[test]
+    fn copy_is_a_plain_copy() {
+        let a = [1u64, 2, 3, u64::MAX];
+        let mut b = [0xdeadu64; 4];
+        mp_copy(&mut b, &a);
+        assert_eq!(b, a);
+        // Empty is a no-op (not a panic): equal (zero) lengths.
+        let a: [u64; 0] = [];
+        let mut b: [u64; 0] = [];
+        mp_copy(&mut b, &a);
+        assert_eq!(b, a);
     }
 
     #[test]
