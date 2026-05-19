@@ -39,6 +39,7 @@ toolchain.
 | `sqisign-mp` | `mp_invert_matrix` | odd-det input never panics, main diagonal of M*Minv == 1 mod 2^e (off-diagonal inherits mp_neg defect) | link `mp.c` for byte-equality vs C |
 | `sqisign-gf` | `fp_add` | bit-exact commutativity, structural carry invariant (limbs 0..=3 < 2^51; limb 4 unmasked by design) | link `fp_p5248_64.c` for byte-equality vs C |
 | `sqisign-gf` | `fp_sub` | `fp_sub(a,a)` is the canonical all-zero limb vector, structural carry invariant (limbs 0..=3 < 2^51; limb 4 unmasked by design) | link `fp_p5248_64.c` for byte-equality vs C |
+| `sqisign-gf` | `fp_mul` | bit-exact commutativity (the per-column set of partial products is operand-symmetric and the u128 accumulator addition is associative and commutative), structural carry invariant (limbs 0..=3 < 2^51; limb 4 fully unmasked by design, the reference's final `c[4] = (spint)t` is a 64-bit truncation) | link `fp_p5248_64.c` for byte-equality vs C |
 | `sqisign-gf` | `fp_neg` | `fp_neg(0)` is the canonical all-zero limb vector, structural carry invariant (limbs 0..=3 < 2^51; limb 4 unmasked by design) | link `fp_p5248_64.c` for byte-equality vs C |
 | `sqisign-gf` | `fp_copy` | bit-exact identity into `out`, for arbitrary five-limb inputs | link `fp_p5248_64.c` for byte-equality vs C |
 | `sqisign-gf` | `fp_set_zero` | bit-exact canonical all-zero limb vector into `out`, for arbitrary five-limb destination pre-fill | link `fp_p5248_64.c` for byte-equality vs C |

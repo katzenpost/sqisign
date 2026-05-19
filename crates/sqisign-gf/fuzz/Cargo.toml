@@ -30,6 +30,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "fp_mul"
+path = "fuzz_targets/fp_mul.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "fp_neg"
 path = "fuzz_targets/fp_neg.rs"
 test = false

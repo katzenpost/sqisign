@@ -97,6 +97,31 @@
 //!   C-derived vector battery therefore exercises only the two declared
 //!   endpoints. No upstream defect observed; every committed C-derived
 //!   vector replays bit-for-bit.
+//! - [`fp_mul`] is `fp_mul(out, a, b)`, the thin wrapper the reference
+//!   defines over `modmul`: Montgomery modular multiplication on the
+//!   level-1 generic field. `modmul` is a Granger-Scott style schoolbook
+//!   multiplier with the Montgomery reduction folded **inline**, taking
+//!   advantage of the special structure of `p5248` (only limb 4 of the
+//!   prime, `p4 == 0x500000000000`, is non-zero). The diagonals
+//!   `a[i] * b[j]` for each column `i + j == k` are summed into a 128-bit
+//!   accumulator `t`; at columns 0..=4 the low 51 bits of `t` are stored
+//!   as `v0..v4` and `t` is shifted right by 51; starting at column 4 each
+//!   column also folds in `v_{k-4} * p4`, performing the Montgomery
+//!   reduction inline with the multiplication. The output is the redundant
+//!   reduced representative: limbs 0..=3 are below `2^51` (the column
+//!   mask), limb 4 carries the full residual `t` *unmasked* (no `& mask`
+//!   on the final write). The port transcribes the reference's column
+//!   structure identifier-for-identifier and statement-for-statement;
+//!   `(dpint)a[i] * b[j]` becomes `(a[i] as u128) * (b[j] as u128)`, the
+//!   `(spint)t & mask` masks become `(t as u64) & MASK51`, and the
+//!   `t >>= 51` shifts apply directly to `u128`. No upstream defect
+//!   observed; every committed C-derived vector replays bit-for-bit. The
+//!   commutativity hypothesis `fp_mul(a,b) == fp_mul(b,a)` was checked
+//!   bit-exactly across the full 1144-vector battery before being pinned
+//!   in the property suite (see `fp_mul_props.rs` for justification: the
+//!   column sums are operand-symmetric over the unordered diagonal
+//!   `a[i] * b[j]` set, and `u128` accumulation is associative and
+//!   commutative).
 //! - [`fp_cswap`] is `fp_cswap(a, b, ctl)`, the branchless constant-time
 //!   conditional swap defined in `fp_p5248_64.c`. Its contract is
 //!   wider than [`fp_select`]'s: only the LSB of `ctl` is consulted
@@ -605,4 +630,151 @@ fn modcsw(b: u64, g: &mut Fp, f: &mut Fp) {
 pub fn fp_cswap(a: &mut Fp, b: &mut Fp, ctl: u32) {
     let bit = (ctl & 1) as u64;
     modcsw(bit, a, b);
+}
+
+/// Prime's contribution at limb 4, `p4 == 0x500000000000`. The
+/// level-1 prime `p5248 = 5 * 2^248 - 1` has all-zero limbs at indices
+/// 0..=3 in the radix-2^51 layout (`5 * 2^248 = 5 * 2^(51*4 + 44) =
+/// (5 << 44) << (51 * 4) = 0x500000000000 << (51 * 4)`); `modmul`
+/// exploits this by folding only `v_k * p4` into the running accumulator
+/// at columns 4..=8 (the Montgomery reduction inline with the
+/// multiplication).
+const P4: u64 = 0x500000000000;
+
+/// Montgomery modular multiplication, `c = a * b mod 2p` in the redundant
+/// radix-2^51 representation.
+///
+/// Mirrors the reference's
+/// `inline static void modmul(const spint *a, const spint *b, spint *c)`
+/// from `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:98..153`
+/// statement-for-statement; the column structure and the order of every
+/// `t +=` are preserved so the bit-exact oracle correspondence at the
+/// `fp_t` boundary is visible at the source level.
+///
+/// Granger-Scott structure for the special prime `p5248`:
+///
+/// - The product `a * b` is computed schoolbook, columns 0..=8, into a
+///   128-bit accumulator `t` (the reference's `dpint == __uint128_t`,
+///   ported here as `u128`). At each column `k` the low 51 bits of `t`
+///   are stored (as `v0..v4` for columns 0..=4 and as the output limbs
+///   `c[0..=3]` for columns 5..=8), then `t >>= 51`. The mask is
+///   `MASK51 = (1 << 51) - 1`.
+/// - The Montgomery reduction is folded inline by adding `v_{k-4} * p4`
+///   to `t` at columns 4..=8, where `p4 == 0x500000000000` is the
+///   prime's only non-zero limb in the radix-2^51 layout. Because the
+///   reduction touches only column 4 of the prime, the per-column work
+///   is a single extra `v_k * p4` add rather than a full
+///   `q * p` Schoolbook reduction.
+/// - The final write `c[4] = (spint)t` is a **full 64-bit truncation of
+///   the residual `t`, NOT masked** (no `& mask`), matching the
+///   reference's last line exactly: limb 4 of the output is left
+///   unmasked, exactly as `modadd`/`modsub`/`modneg` leave it (only
+///   `redc`/`modfsb`, ported later, fully canonicalise).
+///
+/// The transcription rules applied uniformly:
+/// - `spint`/`dpint`/`udpint` -> `u64` / `u128` / `u128`.
+/// - `(dpint)a[i] * b[j]` -> `(a[i] as u128) * (b[j] as u128)`. Each
+///   product is at most `(2^64 - 1)^2 = 2^128 - 2^65 + 1 < 2^128`, so
+///   the multiplication never overflows `u128` and plain `*` is the
+///   bit-exact equivalent of the C `(__uint128_t)a * b`.
+/// - `t += ...` -> `t = t.wrapping_add(...)`. The reference's `t +=` is
+///   on `__uint128_t`, which is *unsigned wraparound* by the C standard.
+///   For canonical inputs (limbs `< 2^51`) the reference's own analysis
+///   shows `t` never exceeds `~2^104.4` so wraparound is invisible; the
+///   differential battery, however, deliberately feeds full-width random
+///   limbs (the cdump harness's stated intent: "the reference accepts
+///   any limbs and the port must match it bit-for-bit on them too"), and
+///   on those `t` can exceed `2^128` after summing five partial
+///   products. The port therefore uses `wrapping_add` throughout to
+///   reproduce the C wraparound semantics exactly, otherwise Rust's
+///   debug-mode overflow checks would trap on inputs the C reference
+///   handles silently. `wrapping_add` is associative and commutative on
+///   `u128` modulo `2^128`, so the commutativity argument for property
+///   (1) is unaffected.
+/// - `(spint)t & mask` -> `(t as u64) & MASK51`.
+/// - `(dpint)v_k * (dpint)p4` -> `(v_k as u128) * (P4 as u128)`. The
+///   factors are at most `2^51 - 1` and `0x500000000000 < 2^47`, so the
+///   product fits in 98 bits; plain `*` is safe and bit-exact.
+/// - `t >>= 51` applies directly to `u128`.
+///
+/// Identifier mapping (each row preserves the reference's name verbatim):
+/// `t`, `v0`, `v1`, `v2`, `v3`, `v4`, `c[0..=4]`, `p4` (constant inlined
+/// as `P4 as u128` at each fold). The statement order and the per-column
+/// number of `t += ...` lines are preserved, so the column-by-column
+/// trace lines up one-to-one with `fp_p5248_64.c:100..152`.
+fn modmul(a: &Fp, b: &Fp, c: &mut Fp) {
+    let mut t: u128 = 0;
+    t = t.wrapping_add((a[0] as u128) * (b[0] as u128));
+    let v0: u64 = (t as u64) & MASK51;
+    t >>= 51;
+    t = t.wrapping_add((a[0] as u128) * (b[1] as u128));
+    t = t.wrapping_add((a[1] as u128) * (b[0] as u128));
+    let v1: u64 = (t as u64) & MASK51;
+    t >>= 51;
+    t = t.wrapping_add((a[0] as u128) * (b[2] as u128));
+    t = t.wrapping_add((a[1] as u128) * (b[1] as u128));
+    t = t.wrapping_add((a[2] as u128) * (b[0] as u128));
+    let v2: u64 = (t as u64) & MASK51;
+    t >>= 51;
+    t = t.wrapping_add((a[0] as u128) * (b[3] as u128));
+    t = t.wrapping_add((a[1] as u128) * (b[2] as u128));
+    t = t.wrapping_add((a[2] as u128) * (b[1] as u128));
+    t = t.wrapping_add((a[3] as u128) * (b[0] as u128));
+    let v3: u64 = (t as u64) & MASK51;
+    t >>= 51;
+    t = t.wrapping_add((a[0] as u128) * (b[4] as u128));
+    t = t.wrapping_add((a[1] as u128) * (b[3] as u128));
+    t = t.wrapping_add((a[2] as u128) * (b[2] as u128));
+    t = t.wrapping_add((a[3] as u128) * (b[1] as u128));
+    t = t.wrapping_add((a[4] as u128) * (b[0] as u128));
+    t = t.wrapping_add((v0 as u128) * (P4 as u128));
+    let v4: u64 = (t as u64) & MASK51;
+    t >>= 51;
+    t = t.wrapping_add((a[1] as u128) * (b[4] as u128));
+    t = t.wrapping_add((a[2] as u128) * (b[3] as u128));
+    t = t.wrapping_add((a[3] as u128) * (b[2] as u128));
+    t = t.wrapping_add((a[4] as u128) * (b[1] as u128));
+    t = t.wrapping_add((v1 as u128) * (P4 as u128));
+    c[0] = (t as u64) & MASK51;
+    t >>= 51;
+    t = t.wrapping_add((a[2] as u128) * (b[4] as u128));
+    t = t.wrapping_add((a[3] as u128) * (b[3] as u128));
+    t = t.wrapping_add((a[4] as u128) * (b[2] as u128));
+    t = t.wrapping_add((v2 as u128) * (P4 as u128));
+    c[1] = (t as u64) & MASK51;
+    t >>= 51;
+    t = t.wrapping_add((a[3] as u128) * (b[4] as u128));
+    t = t.wrapping_add((a[4] as u128) * (b[3] as u128));
+    t = t.wrapping_add((v3 as u128) * (P4 as u128));
+    c[2] = (t as u64) & MASK51;
+    t >>= 51;
+    t = t.wrapping_add((a[4] as u128) * (b[4] as u128));
+    t = t.wrapping_add((v4 as u128) * (P4 as u128));
+    c[3] = (t as u64) & MASK51;
+    t >>= 51;
+    c[4] = t as u64;
+}
+
+/// GF(p) Montgomery multiplication `out = a * b * R^-1 mod p`, in the
+/// redundant radix-2^51 representation, reduced to less than `2p`.
+///
+/// Mirrors the reference's `void fp_mul(fp_t *out, const fp_t *a,
+/// const fp_t *b)`, which is the thin wrapper `modmul(*a, *b, *out)`.
+/// As with [`fp_add`], [`fp_sub`] and [`fp_neg`], the output is *not*
+/// fully canonical: limbs 0..=3 are below `2^51` (the column mask) but
+/// limb 4 is left unmasked (the final `c[4] = (spint)t` is a full 64-bit
+/// truncation of the residual accumulator, no `& mask`), exactly as the
+/// reference leaves it. Compare field elements with the reference's
+/// equality (`modcmp`, ported later), never by raw-limb equality.
+///
+/// Because Montgomery multiplication carries the inverse of `R` through,
+/// `fp_mul(a, b)` is not the positional product `a * b mod p`; it is
+/// `a * b * R^-1 mod p`. Two ways the Montgomery domain manifests:
+/// - `fp_mul(a, MONTGOMERY_ONE)` is the canonical reduction (`redc`) of
+///   `a`. `redc` is not yet ported, but this identity is the basis of
+///   `nres`/`redc` once they land.
+/// - The Montgomery `R^2 mod p` constant is what `nres` multiplies an
+///   ordinary residue by to enter the Montgomery domain.
+pub fn fp_mul(out: &mut Fp, a: &Fp, b: &Fp) {
+    modmul(a, b, out);
 }
