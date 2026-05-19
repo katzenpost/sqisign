@@ -43,6 +43,7 @@ toolchain.
 | `sqisign-gf` | `fp_copy` | bit-exact identity into `out`, for arbitrary five-limb inputs | link `fp_p5248_64.c` for byte-equality vs C |
 | `sqisign-gf` | `fp_set_zero` | bit-exact canonical all-zero limb vector into `out`, for arbitrary five-limb destination pre-fill | link `fp_p5248_64.c` for byte-equality vs C |
 | `sqisign-gf` | `fp_set_one` | bit-exact positional-one limb vector `[1, 0, 0, 0, 0]` into `out`, for arbitrary five-limb destination pre-fill | link `fp_p5248_64.c` for byte-equality vs C |
+| `sqisign-gf` | `fp_select` | per-limb bit blend `d[i] = a0[i] ^ (cw & (a0[i] ^ a1[i]))` at the two declared `ctl` endpoints, with `cw` the sign-extended widening of `ctl`; `ctl == 0` selects `a0`, `ctl == 0xFFFFFFFF` selects `a1` | link `fp.c` (lvlx) for byte-equality vs C |
 
 ## Running (on a host with the toolchain)
 

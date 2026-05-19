@@ -79,6 +79,24 @@
 //!   forgets to write leaves a visible non-zero residue that diverges
 //!   from the recorded output. No upstream defect observed; every
 //!   committed C-derived vector replays bit-for-bit.
+//! - [`fp_select`] is `fp_select(d, a0, a1, ctl)`, the branchless
+//!   constant-time conditional select defined in
+//!   `vendor/the-sqisign/src/gf/ref/lvlx/fp.c`. The contract is narrow:
+//!   `ctl` is required to be either `0x00000000` or `0xFFFFFFFF`; on
+//!   `0x00000000` the destination is set to `a0`, on `0xFFFFFFFF` to
+//!   `a1`. The reference computes a per-limb bit blend
+//!   `d[i] = a0[i] ^ (cw & (a0[i] ^ a1[i]))`, where `cw` is `ctl`
+//!   *sign-extended* to `digit_t` (a `uint64_t`) via the C cast chain
+//!   `digit_t cw = (int32_t)ctl;`: the implicit widening from `int32_t`
+//!   to `uint64_t` is sign-extending in C, so `cw == 0` for `ctl == 0`
+//!   and `cw == 0xFFFFFFFFFFFFFFFF` for `ctl == 0xFFFFFFFF`. The port
+//!   reproduces that two-step cast explicitly as `(ctl as i32) as u64`
+//!   (sign-extending `i32 -> i64` then bit-casting to `u64`) to keep
+//!   the bit-for-bit oracle correspondence visible at the call site.
+//!   Per the reference contract any other `ctl` value is undefined; the
+//!   C-derived vector battery therefore exercises only the two declared
+//!   endpoints. No upstream defect observed; every committed C-derived
+//!   vector replays bit-for-bit.
 //!
 //! Correctness is established as for the whole port: every committed
 //! C-derived vector is replayed and bit-compared (`tests/`). Equivalence
@@ -405,3 +423,49 @@ const MONTGOMERY_ONE: Fp = [
     0x0000_0000_0000_0000,
     0x0000_3000_0000_0000,
 ];
+
+/// Branchless constant-time conditional select on `fp_t`.
+///
+/// Mirrors the reference's
+/// `void fp_select(fp_t *d, const fp_t *a0, const fp_t *a1, uint32_t ctl)`
+/// from `vendor/the-sqisign/src/gf/ref/lvlx/fp.c` exactly:
+///
+/// ```c
+/// /*
+///  * If ctl == 0x00000000, then *d is set to a0
+///  * If ctl == 0xFFFFFFFF, then *d is set to a1
+///  * ctl MUST be either 0x00000000 or 0xFFFFFFFF.
+///  */
+/// void fp_select(fp_t *d, const fp_t *a0, const fp_t *a1, uint32_t ctl) {
+///     digit_t cw = (int32_t)ctl;
+///     for (unsigned int i = 0; i < NWORDS_FIELD; i++) {
+///         (*d)[i] = (*a0)[i] ^ (cw & ((*a0)[i] ^ (*a1)[i]));
+///     }
+/// }
+/// ```
+///
+/// Per the reference's documented contract, `ctl` must be either
+/// `0x00000000` or `0xFFFFFFFF`; any other value is undefined behaviour
+/// at the reference, and the C-derived vector battery therefore only
+/// exercises the two declared endpoints. The port does **not** narrow
+/// the type to `bool` because the differential boundary records `ctl`
+/// as the raw `u32` the reference takes.
+///
+/// The cast chain `digit_t cw = (int32_t)ctl;` is the load-bearing
+/// subtlety. In C, the right-hand side casts `uint32_t` to `int32_t`
+/// (a bit-preserving reinterpretation under two's complement) then the
+/// implicit assignment to `digit_t == uint64_t` is a *widening* from a
+/// signed type, which is sign-extending. So `ctl == 0` yields `cw == 0`
+/// and `ctl == 0xFFFFFFFF` (interpreted as the signed `-1`) yields
+/// `cw == 0xFFFFFFFFFFFFFFFF`. The port reproduces this as the
+/// explicit two-step `(ctl as i32) as u64`: `as i32` is the
+/// bit-preserving `uint32_t -> int32_t` reinterpret, and `as u64` on
+/// a signed type sign-extends (`i32 -> i64`) before bit-casting to
+/// `u64`. The resulting `cw` is bit-for-bit equal to the reference's,
+/// preserving the oracle correspondence at the limb-XOR step.
+pub fn fp_select(d: &mut Fp, a0: &Fp, a1: &Fp, ctl: u32) {
+    let cw = (ctl as i32) as u64;
+    for i in 0..NWORDS_FIELD {
+        d[i] = a0[i] ^ (cw & (a0[i] ^ a1[i]));
+    }
+}
