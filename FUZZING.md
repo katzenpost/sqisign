@@ -39,6 +39,7 @@ toolchain.
 | `sqisign-mp` | `mp_invert_matrix` | odd-det input never panics, main diagonal of M*Minv == 1 mod 2^e (off-diagonal inherits mp_neg defect) | link `mp.c` for byte-equality vs C |
 | `sqisign-gf` | `fp_add` | bit-exact commutativity, structural carry invariant (limbs 0..=3 < 2^51; limb 4 unmasked by design) | link `fp_p5248_64.c` for byte-equality vs C |
 | `sqisign-gf` | `fp_sub` | `fp_sub(a,a)` is the canonical all-zero limb vector, structural carry invariant (limbs 0..=3 < 2^51; limb 4 unmasked by design) | link `fp_p5248_64.c` for byte-equality vs C |
+| `sqisign-gf` | `fp_neg` | `fp_neg(0)` is the canonical all-zero limb vector, structural carry invariant (limbs 0..=3 < 2^51; limb 4 unmasked by design) | link `fp_p5248_64.c` for byte-equality vs C |
 
 ## Running (on a host with the toolchain)
 

@@ -28,3 +28,10 @@ path = "fuzz_targets/fp_sub.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "fp_neg"
+path = "fuzz_targets/fp_neg.rs"
+test = false
+doc = false
+bench = false

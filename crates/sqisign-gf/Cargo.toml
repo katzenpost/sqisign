@@ -25,3 +25,7 @@ harness = false
 [[bench]]
 name = "fp_sub"
 harness = false
+
+[[bench]]
+name = "fp_neg"
+harness = false

@@ -39,6 +39,16 @@
 //!   signals the difference went negative), and only then conditionally
 //!   adds `2p` back in the redundant form. No upstream defect observed;
 //!   every committed C-derived vector replays bit-for-bit.
+//! - [`fp_neg`] is `fp_neg(out, a)`, the thin wrapper the reference
+//!   defines over `modneg`: modular negation reducing to *less than 2p*
+//!   (not fully canonical). It is the **unary analogue of `modsub`**:
+//!   where `modsub` forms `a[i] - b[i]`, `modneg` forms `0 - b[i]`
+//!   limbwise (the implicit minuend is zero), then runs the *identical*
+//!   `prop` plus conditional `2p` correction tail `modsub` uses. It
+//!   reuses the same `prop` helper and `TWO_P4` constant. No upstream
+//!   defect observed; every committed C-derived vector replays
+//!   bit-for-bit, and the all-zero input maps to the bit-exact canonical
+//!   all-zero representative.
 //!
 //! Correctness is established as for the whole port: every committed
 //! C-derived vector is replayed and bit-compared (`tests/`). Equivalence
@@ -220,4 +230,62 @@ fn modsub(a: &Fp, b: &Fp, n: &mut Fp) {
 /// equality.
 pub fn fp_sub(out: &mut Fp, a: &Fp, b: &Fp) {
     modsub(a, b, out);
+}
+
+/// Modular negation, reducing to less than `2p` (not fully canonical).
+///
+/// Mirrors the reference's
+/// `inline static void modneg(const spint *b, spint *n)`:
+///
+/// ```c
+/// n[i] = (spint)0 - b[i];       // i = 0..4
+/// carry = prop(n);
+/// n[0] -= 2u & carry;
+/// n[4] += 0xa00000000000u & carry;
+/// (void)prop(n);
+/// ```
+///
+/// This is the **unary analogue of `modsub`**: the minuend is the
+/// implicit constant `0`, so each limb is `0 - b[i]` rather than
+/// `a[i] - b[i]`. The `prop` plus conditional `2p` correction tail is
+/// byte-for-byte the one `modsub` uses; only the implicit-zero minuend
+/// distinguishes the two, exactly as the missing pre-add distinguishes
+/// `modsub` from `modadd`. `prop`'s all-ones `carry` mask signals
+/// whether the negation went negative in the redundant form, in which
+/// case `2p` is masked back in (`n[0] -= 2`, `n[4] += 2*p4`) and carries
+/// are propagated once more.
+///
+/// `(spint)0 - b[i]` is an *unsigned* `uint64_t` subtraction in the
+/// reference (`spint == uint64_t`): it is the two's-complement negation
+/// `0 - b[i]` with wraparound, reproduced here as
+/// `0u64.wrapping_sub(b[i])`. As with `modadd`/`modsub`, the reference
+/// accepts arbitrary non-canonical limb inputs and the port reproduces
+/// its output on those too (the C-derived vectors include full-width
+/// 64-bit limb inputs and pin this). The all-zero input is a fixed
+/// point: every limb stays `0`, `prop` returns a zero carry mask, no
+/// correction fires, and the output is the bit-exact canonical all-zero
+/// representative.
+fn modneg(b: &Fp, n: &mut Fp) {
+    for i in 0..NWORDS_FIELD {
+        n[i] = 0u64.wrapping_sub(b[i]);
+    }
+    let carry = prop(n);
+    n[0] = n[0].wrapping_sub(2 & carry);
+    n[4] = n[4].wrapping_add(TWO_P4 & carry);
+    let _ = prop(n);
+}
+
+/// GF(p) negation `out = -a mod p`, in the redundant radix-2^51
+/// representation, reduced to less than `2p`.
+///
+/// Mirrors the reference's `void fp_neg(fp_t *out, const fp_t *a)`,
+/// which is the thin wrapper `modneg(*a, *out)`. As with [`fp_add`] and
+/// [`fp_sub`], the output is *not* fully canonical: limbs 0..=3 are
+/// below `2^51` (the `prop` mask) but limb 4 is left unmasked, exactly
+/// as the reference leaves it. Compare field elements with the
+/// reference's equality (`modcmp`, ported later), never by raw-limb
+/// equality. The lone exception is the canonical zero: `fp_neg` of the
+/// all-zero representative is the bit-exact all-zero representative.
+pub fn fp_neg(out: &mut Fp, a: &Fp) {
+    modneg(a, out);
 }
