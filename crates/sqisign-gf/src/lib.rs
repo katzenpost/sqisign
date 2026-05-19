@@ -55,6 +55,16 @@
 //!   is bit-exact on every input by construction, including non-canonical
 //!   limbs: the recorded output equals the recorded input limb for limb
 //!   on the full 1012-vector battery. No upstream defect observed.
+//! - [`fp_set_zero`] is `fp_set_zero(x)`, the thin wrapper the reference
+//!   defines over `modzer`: a plain five-limb zero-fill, `x[i] = 0` for
+//!   `i` in `0..5`. No `prop`, no `2p` correction, no reduction; the
+//!   recorded output is the bit-exact canonical all-zero representative
+//!   regardless of the destination's prior contents. The differential
+//!   boundary varies the destination *pre-fill* as the "input" (a setter
+//!   has no field argument); a no-op or partial-write port is caught at
+//!   that boundary because each non-zero pre-fill leaves a visible
+//!   residue if any limb is forgotten. No upstream defect observed; every
+//!   committed C-derived vector replays bit-for-bit.
 //!
 //! Correctness is established as for the whole port: every committed
 //! C-derived vector is replayed and bit-compared (`tests/`). Equivalence
@@ -316,4 +326,26 @@ pub fn fp_neg(out: &mut Fp, a: &Fp) {
 /// of the same residue class.
 pub fn fp_copy(out: &mut Fp, a: &Fp) {
     *out = *a;
+}
+
+/// GF(p) zero setter `*x = 0`, in the redundant radix-2^51 representation.
+///
+/// Mirrors the reference's `void fp_set_zero(fp_t *x)`, which is the thin
+/// wrapper `modzer(*x)`:
+///
+/// ```c
+/// static void modzer(spint *a) {
+///   for (int i = 0; i < 5; i++) a[i] = 0;
+/// }
+/// ```
+///
+/// A plain five-limb zero-fill: no `prop`, no `2p` correction, no
+/// reduction. The output is the bit-exact canonical all-zero
+/// representative regardless of the destination's prior contents, and so
+/// is unambiguously the canonical zero in *both* the redundant-mod-`p`
+/// sense and the raw-limb sense (the lone exception, like the all-zero
+/// fixed point of [`fp_neg`]: every other field result is congruent only
+/// up to the redundant form).
+pub fn fp_set_zero(out: &mut Fp) {
+    *out = [0u64; NWORDS_FIELD];
 }
