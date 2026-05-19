@@ -57,6 +57,28 @@ pub fn shake128_vec(input: &[u8], out_len: usize) -> Vec<u8> {
     out
 }
 
+/// SHA3-256 of `input`: a fixed 32-byte digest, mirroring the reference's
+/// `void sha3_256(uint8_t *output, const uint8_t *input, size_t inlen)`.
+/// Unlike SHAKE there is no output length; the size is intrinsic.
+pub fn sha3_256(input: &[u8]) -> [u8; 32] {
+    use sha3::Digest;
+    sha3::Sha3_256::digest(input).into()
+}
+
+/// SHA3-384 of `input`: a fixed 48-byte digest, the reference's
+/// `sha3_384(output, input, inlen)`.
+pub fn sha3_384(input: &[u8]) -> [u8; 48] {
+    use sha3::Digest;
+    sha3::Sha3_384::digest(input).into()
+}
+
+/// SHA3-512 of `input`: a fixed 64-byte digest, the reference's
+/// `sha3_512(output, input, inlen)`.
+pub fn sha3_512(input: &[u8]) -> [u8; 64] {
+    use sha3::Digest;
+    sha3::Sha3_512::digest(input).into()
+}
+
 /// Incremental SHAKE256, mirroring the reference's
 /// `shake256_inc_init` / `_absorb` / `_finalize` / `_squeeze` contract:
 /// construct, [`absorb`](Shake256Absorb::absorb) any number of times,
@@ -184,6 +206,26 @@ mod tests {
         sq.squeeze(&mut inc[..7]);
         sq.squeeze(&mut inc[7..]);
         assert_eq!(inc.to_vec(), shake128_vec(b"katzenpost", 100));
+    }
+
+    // FIPS-202 / NIST empty-input known answers for the fixed-output SHA3
+    // digests, the same values our C dump recorded for each id 0.
+    #[test]
+    fn sha3_empty_input_known_answers() {
+        assert_eq!(
+            hex::encode(sha3_256(b"")),
+            "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a"
+        );
+        assert_eq!(
+            hex::encode(sha3_384(b"")),
+            "0c63a75b845e4f7d01107d852e4c2485c51a50aaaa94fc61995e71bbee983a2ac\
+             3713831264adb47fb6bd1e058d5f004"
+        );
+        assert_eq!(
+            hex::encode(sha3_512(b"")),
+            "a69f73cca23a9ac5c8b567dc185a756e97c982164fe25859e0d1dcc1475c80a61\
+             5b2123af1f5f94c11e3e9402c3ac558f500199d95b6d3e301758586281dcd26"
+        );
     }
 
     #[test]

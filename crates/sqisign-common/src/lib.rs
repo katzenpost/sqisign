@@ -14,10 +14,12 @@
 //!   incremental absorb/finalize/squeeze API
 //!   (`sqisign_common::shake256_inc`, `..::shake128_inc`), mirroring the
 //!   reference's `shake*_inc_init/_absorb/_finalize/_squeeze`.
+//! - [`hash::sha3_256`] / [`hash::sha3_384`] / [`hash::sha3_512`] are the
+//!   fixed-output SHA3 digests (`sqisign_common::sha3_256` etc.),
+//!   mirroring the reference's `sha3_256(out, in, inlen)` family.
 //!
-//! Not yet ported (later units within Phase 1 `common`): SHA3-256/384/512,
-//! seed expansion, the CTR-DRBG (`randombytes`), and the memory-zeroing
-//! utilities.
+//! Not yet ported (later units within Phase 1 `common`): seed expansion,
+//! the CTR-DRBG (`randombytes`), and the memory-zeroing utilities.
 //!
 //! Correctness is established the way the whole port is: every committed
 //! C-derived vector is replayed against this code (see the per-boundary
@@ -28,5 +30,6 @@
 pub mod hash;
 
 pub use hash::{
-    shake128, shake256, Shake128Absorb, Shake128Squeeze, Shake256Absorb, Shake256Squeeze,
+    sha3_256, sha3_384, sha3_512, shake128, shake256, Shake128Absorb, Shake128Squeeze,
+    Shake256Absorb, Shake256Squeeze,
 };

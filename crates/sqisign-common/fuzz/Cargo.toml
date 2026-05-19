@@ -35,3 +35,10 @@ path = "fuzz_targets/shake_inc.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "sha3"
+path = "fuzz_targets/sha3.rs"
+test = false
+doc = false
+bench = false
