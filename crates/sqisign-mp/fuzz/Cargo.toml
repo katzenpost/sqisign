@@ -30,6 +30,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "mp_mul"
+path = "fuzz_targets/mp_mul.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "mp_shiftl"
 path = "fuzz_targets/mp_shiftl.rs"
 test = false

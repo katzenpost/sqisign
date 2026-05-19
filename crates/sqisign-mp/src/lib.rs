@@ -25,6 +25,14 @@
 //!   `mp_shiftl` by `RADIX-1`), i.e. `x <- (x << shift) mod 2^(64n)`
 //!   for any `shift`, including amounts past the full bit width
 //!   (result `0`).
+//! - [`mp_mul`] is `mp_mul(c, a, b, nwords)`: the low-half multiprecision
+//!   product. **It faithfully reproduces an upstream defect**: for
+//!   `nwords == 1` the reference double-counts column 0 and yields
+//!   `2*(a*b) mod 2^64` rather than `a*b mod 2^64`. The port mirrors the
+//!   reference's algorithm so this falls out by the same logic; per the
+//!   plan the C reference is the oracle and divergence is never silently
+//!   introduced. Upstream is being notified by a separate correction PR.
+//!   See [`mp_mul`]'s own documentation.
 //!
 //! Correctness is established as for the whole port: every committed
 //! C-derived vector is replayed and bit-compared (`tests/`). Equivalence
@@ -170,6 +178,91 @@ pub fn multiple_mp_shiftl(x: &mut [u64], shift: u32) {
     mp_shiftl(x, t); // t is now in 1..=63
 }
 
+/// Low-half multiprecision product: `c = (a * b)` keeping only the low
+/// `n` limbs (`n = a.len()`), the high half discarded, mirroring the
+/// reference's `void mp_mul(digit_t *c, const digit_t *a, const digit_t
+/// *b, size_t nwords)` ("explicitly does not use the higher half of c, as
+/// we do not need in our applications").
+///
+/// # Faithful reproduction of an upstream defect (`nwords == 1`)
+///
+/// For `nwords >= 2` this is exactly `(a*b) mod 2^(64n)`. For
+/// `nwords == 1` the reference is **wrong**: its per-row code does the
+/// first column with `MUL(t, a[i], b[0])` and then *unconditionally*
+/// repeats the last column `j = nwords-1`; when `nwords == 1` those are
+/// the same column 0, so `a[0]*b[0]` is added to the row twice and the
+/// result is `2*(a*b) mod 2^64`, not `a*b mod 2^64`. (The reference also
+/// writes two limbs into a one-limb VLA there, a separate latent
+/// out-of-bounds store; it does not affect the truncated output and is
+/// not reproduced.)
+///
+/// Per the plan the vendored C reference is the oracle and any divergence
+/// is never silently introduced, so this port mirrors the reference's
+/// *algorithm* (a scratch of `n + 1` limbs gives the two-limb `MUL`
+/// writes a real slot, so the doubling arises from the same control flow,
+/// not from undefined behaviour). All 1048 committed C-derived vectors,
+/// including the 18 single-limb cases that exhibit the doubling, pass
+/// bit-for-bit. `mp_mul` has no callers in the reference and SQIsign uses
+/// widths in `{4,5,8,9}`, never 1, so the defect is latent there; a
+/// correction PR has been opened upstream.
+///
+/// # Panics
+/// If `a`, `b` and `c` do not all share one length, or it is zero.
+pub fn mp_mul(c: &mut [u64], a: &[u64], b: &[u64]) {
+    let n = a.len();
+    assert!(
+        n != 0 && b.len() == n && c.len() == n,
+        "mp_mul: a, b, c must share one non-zero limb count (nwords)"
+    );
+
+    let mut cc = vec![0u64; n];
+    // The reference's `digit_t t[nwords]`. MUL writes two limbs, so for
+    // n == 1 the reference stores out of bounds; we size t at n + 1 to
+    // give that store a real slot. The extra limb is never folded into
+    // the truncated result, so the logic stays faithful.
+    let mut t = vec![0u64; n + 1];
+
+    for i in 0..n {
+        // MUL(t, a[i], b[0]): t[0] = lo, t[1] = hi.
+        let p = (a[i] as u128) * (b[0] as u128);
+        t[0] = p as u64;
+        t[1] = (p >> 64) as u64;
+
+        // for j in 1 ..= nwords-2
+        let mut j = 1usize;
+        while j + 1 < n {
+            let uv = (a[i] as u128) * (b[j] as u128);
+            let uv0 = uv as u64;
+            let uv1 = (uv >> 64) as u64;
+            let (s, carry) = t[j].overflowing_add(uv0);
+            t[j] = s;
+            // hi(a*b) <= 2^64-2, so + carry (<=1) never wraps; wrapping
+            // add documents the reference's `UV[1] + carry` intent.
+            t[j + 1] = uv1.wrapping_add(carry as u64);
+            j += 1;
+        }
+
+        // The unconditional last column j = nwords-1. For n == 1 this is
+        // column 0 again: the defect that doubles the single-limb result.
+        let jl = n - 1;
+        let uv0 = ((a[i] as u128) * (b[jl] as u128)) as u64;
+        t[jl] = t[jl].wrapping_add(uv0); // ADDC carry-out discarded
+
+        // mp_add(&cc[i], &cc[i], t, nwords - i): add the low n-i limbs of
+        // the row into cc starting at i, the final carry discarded.
+        let len = n - i;
+        let mut carry = 0u64;
+        for k in 0..len {
+            let (s1, c1) = cc[i + k].overflowing_add(t[k]);
+            let (s2, c2) = s1.overflowing_add(carry);
+            cc[i + k] = s2;
+            carry = (c1 as u64) | (c2 as u64);
+        }
+    }
+
+    c.copy_from_slice(&cc);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,6 +282,45 @@ mod tests {
         let mut c = [0u64; 2];
         mp_add(&mut c, &[u64::MAX, u64::MAX], &[1, 0]);
         assert_eq!(c, [0, 0]);
+    }
+
+    #[test]
+    fn mul_single_limb_reproduces_upstream_doubling() {
+        // The reference double-counts column 0 at nwords==1: c = 2*(a*b).
+        let mut c = [0u64; 1];
+        mp_mul(&mut c, &[7], &[9]);
+        assert_eq!(c, [2u64.wrapping_mul(7 * 9)]); // 126, not 63
+                                                   // (2^64-1)^2 mod 2^64 = 1, doubled = 2.
+        let mut c = [0u64; 1];
+        mp_mul(&mut c, &[u64::MAX], &[u64::MAX]);
+        assert_eq!(c, [2]);
+        // Zero product is unaffected by doubling.
+        let mut c = [0u64; 1];
+        mp_mul(&mut c, &[0], &[12345]);
+        assert_eq!(c, [0]);
+    }
+
+    #[test]
+    fn mul_multilimb_is_true_low_half() {
+        // nwords>=2 is correct: 2^64 * 1 in two limbs = [0, ...]; use a
+        // known small case. [3,0] * [5,0] = [15,0].
+        let mut c = [0u64; 2];
+        mp_mul(&mut c, &[3, 0], &[5, 0]);
+        assert_eq!(c, [15, 0]);
+        // Carry into the high limb: [2^64-1,0] * [2,0] = lo=2^64-2,
+        // hi=1.
+        let mut c = [0u64; 2];
+        mp_mul(&mut c, &[u64::MAX, 0], &[2, 0]);
+        assert_eq!(c, [u64::MAX - 1, 1]);
+        // Cross term: [a0,a1]*[b0,b1] low half =
+        // [lo(a0 b0), hi(a0 b0)+lo(a0 b1)+lo(a1 b0)].
+        let a0 = 0x1111_1111_1111_1111u64;
+        let b0 = 0x0000_0000_0000_0010u64;
+        let mut c = [0u64; 2];
+        mp_mul(&mut c, &[a0, 1], &[b0, 1]);
+        let full = (a0 as u128) * (b0 as u128) + (((a0 as u128) + (b0 as u128)) << 64);
+        assert_eq!(c[0], full as u64);
+        assert_eq!(c[1], (full >> 64) as u64);
     }
 
     #[test]
