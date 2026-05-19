@@ -42,6 +42,8 @@
 //!   the full width). Correct; 1231 vectors all satisfy `a mod 2^e`.
 //! - [`mp_copy`] is `mp_copy(b, a, nwords)`: a plain limb-for-limb copy
 //!   (`b == a`). No quirk; 1021 vectors.
+//! - [`mp_compare`] is `mp_compare(a, b, nwords)`: three-way unsigned
+//!   comparison (`1`/`0`/`-1`). No quirk; 1217 vectors == `sign(a-b)`.
 //! - [`mp_neg`] is `mp_neg(a, nwords)`. **Third faithful reproduction**:
 //!   the reference adds the two's-complement `+1` to limb 0 only with no
 //!   carry propagation, so it equals `-a` iff `a[0] != 0`. 1042 vectors,
@@ -409,6 +411,31 @@ pub fn mp_copy(b: &mut [u64], a: &[u64]) {
     b.copy_from_slice(a);
 }
 
+/// Three-way unsigned comparison of two equal-length little-endian
+/// values: `1` if `a > b`, `-1` if `a < b`, `0` if equal. Mirrors the
+/// reference's `int mp_compare(const digit_t *a, const digit_t *b,
+/// unsigned int nwords)`, scanning from the most-significant limb down.
+/// No quirk; all 1217 vectors equal `sign(a - b)`. Not constant-time
+/// (the reference's early return is data-dependent; constant-time
+/// hardening is a separate, later phase per the plan).
+///
+/// # Panics
+/// If `a` and `b` do not share one length.
+pub fn mp_compare(a: &[u64], b: &[u64]) -> i32 {
+    assert!(
+        a.len() == b.len(),
+        "mp_compare: a and b must share one limb count (nwords)"
+    );
+    for i in (0..a.len()).rev() {
+        if a[i] > b[i] {
+            return 1;
+        } else if a[i] < b[i] {
+            return -1;
+        }
+    }
+    0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -428,6 +455,20 @@ mod tests {
         let mut c = [0u64; 2];
         mp_add(&mut c, &[u64::MAX, u64::MAX], &[1, 0]);
         assert_eq!(c, [0, 0]);
+    }
+
+    #[test]
+    fn compare_is_three_way_unsigned() {
+        assert_eq!(mp_compare(&[5, 0], &[5, 0]), 0);
+        assert_eq!(mp_compare(&[5, 0], &[4, 0]), 1);
+        assert_eq!(mp_compare(&[4, 0], &[5, 0]), -1);
+        // High limb decides regardless of low limb.
+        assert_eq!(mp_compare(&[u64::MAX, 1], &[0, 2]), -1);
+        assert_eq!(mp_compare(&[0, 2], &[u64::MAX, 1]), 1);
+        // Equal high, low decides.
+        assert_eq!(mp_compare(&[7, 9], &[8, 9]), -1);
+        // Empty compares equal (loop body never runs).
+        assert_eq!(mp_compare(&[], &[]), 0);
     }
 
     #[test]

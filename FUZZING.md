@@ -27,6 +27,7 @@ toolchain.
 | `sqisign-mp` | `mp_mod_2exp` | per-limb low-bit mask, idempotent, over-width no-op | link `mp.c` for byte-equality vs C |
 | `sqisign-mp` | `mp_neg` | faithful model (no carry past limb 0), == -a iff a[0]!=0 | link `mp.c` for byte-equality vs C |
 | `sqisign-mp` | `mp_copy` | identity into b, arbitrary width | link `mp.c` for byte-equality vs C |
+| `sqisign-mp` | `mp_compare` | reflexive, antisymmetric, consistent with top differing limb | link `mp.c` for byte-equality vs C |
 | `sqisign-mp` | `mp_shiftl` | x<<1 == x+x, low shift bits clear, arbitrary width | link `mp.c` for byte-equality vs C |
 | `sqisign-mp` | `mp_shiftr` | returned bit == entry parity, top zero-filled, single-limb == native >> | link `mp.c` for byte-equality vs C |
 | `sqisign-mp` | `multiple_mp_shiftl` | == mp_shiftl in 1..=63, over-width == 0, arbitrary width | link `mp.c` for byte-equality vs C |
