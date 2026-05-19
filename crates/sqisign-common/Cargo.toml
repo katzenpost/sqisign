@@ -23,3 +23,7 @@ criterion.workspace = true
 [[bench]]
 name = "shake256"
 harness = false
+
+[[bench]]
+name = "shake128"
+harness = false

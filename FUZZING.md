@@ -15,6 +15,7 @@ toolchain.
 | Crate | Target | Asserts today | Next increment |
 |---|---|---|---|
 | `sqisign-common` | `shake256` | determinism, XOF prefix stability | link `fips202.c` for byte-equality vs C |
+| `sqisign-common` | `shake128` | determinism, XOF prefix stability, distinct from SHAKE256 | link `fips202.c` for byte-equality vs C |
 
 ## Running (on a host with the toolchain)
 
