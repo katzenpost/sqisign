@@ -51,6 +51,9 @@
 //! - [`select_ct`] is `select_ct(c, a, b, mask, nwords)`: branchless
 //!   bitwise select (`c = a` if `mask==0`, `c = b` if `mask==!0`). No
 //!   quirk; 1049 vectors == `((a^b)&mask)^a`.
+//! - [`swap_ct`] is `swap_ct(a, b, option, nwords)`: branchless
+//!   conditional swap in place (no-op if `option==0`, swap if
+//!   `option==!0`). No quirk; 1049 vectors == the per-bit swap.
 //! - [`mp_neg`] is `mp_neg(a, nwords)`. **Third faithful reproduction**:
 //!   the reference adds the two's-complement `+1` to limb 0 only with no
 //!   carry propagation, so it equals `-a` iff `a[0] != 0`. 1042 vectors,
@@ -488,6 +491,29 @@ pub fn select_ct(c: &mut [u64], a: &[u64], b: &[u64], mask: u64) {
     }
 }
 
+/// Branchless conditional swap of `a` and `b` in place, mirroring the
+/// reference's `void swap_ct(digit_t *a, digit_t *b, const digit_t
+/// option, const int nwords)`: `temp = option & (a^b); a ^= temp;
+/// b ^= temp`. With `option == 0` it is a no-op; with `option == !0` it
+/// swaps `a` and `b`; the reference applies `option` bitwise, so an
+/// arbitrary value is a per-bit conditional swap (each result equals
+/// `(a & !option) | (b & option)` and symmetrically). All 1049 vectors
+/// pin exactly that. No quirk.
+///
+/// # Panics
+/// If `a` and `b` do not share one length.
+pub fn swap_ct(a: &mut [u64], b: &mut [u64], option: u64) {
+    assert!(
+        a.len() == b.len(),
+        "swap_ct: a and b must share one limb count (nwords)"
+    );
+    for i in 0..a.len() {
+        let temp = option & (a[i] ^ b[i]);
+        a[i] ^= temp;
+        b[i] ^= temp;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -507,6 +533,20 @@ mod tests {
         let mut c = [0u64; 2];
         mp_add(&mut c, &[u64::MAX, u64::MAX], &[1, 0]);
         assert_eq!(c, [0, 0]);
+    }
+
+    #[test]
+    fn swap_ct_conditionally_swaps() {
+        let (mut a, mut b) = ([1u64, 2, 3], [9u64, 8, 7]);
+        swap_ct(&mut a, &mut b, 0);
+        assert_eq!((a, b), ([1, 2, 3], [9, 8, 7]), "option 0 is a no-op");
+        swap_ct(&mut a, &mut b, u64::MAX);
+        assert_eq!((a, b), ([9, 8, 7], [1, 2, 3]), "all-ones swaps");
+        // Per-bit: low nibble swapped, rest kept.
+        let (mut a, mut b) = ([0xabcdu64], [0x1234u64]);
+        swap_ct(&mut a, &mut b, 0xf);
+        assert_eq!(a[0], (0xabcd & !0xf) | (0x1234 & 0xf));
+        assert_eq!(b[0], (0x1234 & !0xf) | (0xabcd & 0xf));
     }
 
     #[test]

@@ -31,6 +31,7 @@ toolchain.
 | `sqisign-mp` | `mp_is_zero` | equals the all-limbs-zero predicate, arbitrary width | link `mp.c` for byte-equality vs C |
 | `sqisign-mp` | `mp_is_one` | equals the canonical-one predicate, arbitrary width | link `mp.c` for byte-equality vs C |
 | `sqisign-mp` | `select_ct` | per-bit blend `(a&!m)|(b&m)`; 0/~0 select a/b | link `mp.c` for byte-equality vs C |
+| `sqisign-mp` | `swap_ct` | per-bit conditional swap; 0/~0 no-op/swap; double-swap involution | link `mp.c` for byte-equality vs C |
 | `sqisign-mp` | `mp_shiftl` | x<<1 == x+x, low shift bits clear, arbitrary width | link `mp.c` for byte-equality vs C |
 | `sqisign-mp` | `mp_shiftr` | returned bit == entry parity, top zero-filled, single-limb == native >> | link `mp.c` for byte-equality vs C |
 | `sqisign-mp` | `multiple_mp_shiftl` | == mp_shiftl in 1..=63, over-width == 0, arbitrary width | link `mp.c` for byte-equality vs C |
