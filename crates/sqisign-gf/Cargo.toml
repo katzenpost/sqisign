@@ -61,3 +61,7 @@ harness = false
 [[bench]]
 name = "fp_is_zero"
 harness = false
+
+[[bench]]
+name = "fp_is_equal"
+harness = false

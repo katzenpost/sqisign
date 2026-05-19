@@ -191,6 +191,36 @@
 //!   and commutative, so the running `t` is bit-equal at every masking
 //!   point. No upstream defect observed; every committed C-derived vector
 //!   replays bit-for-bit.
+//! - [`fp_is_equal`] is `fp_is_equal(a, b)`, the second predicate boundary
+//!   in the gf battery: a *binary* predicate returning the same
+//!   `uint32_t` mask shape as [`fp_is_zero`] (`0xFFFFFFFF` when `a` and
+//!   `b` represent the same field element, `0` otherwise). It is the
+//!   thin wrapper the reference defines over `modcmp`, which `redc`s
+//!   **both** operands to their canonical representatives (each limb
+//!   below `2^51`, positional value below `p`), then per limb applies
+//!   the same `(x - 1) >> 51 & 1` zero-detect trick [`modis0`] uses to
+//!   `c[i] ^ d[i]` and ANDs the five resulting bits into an `eq`
+//!   accumulator initialised to `1`. The per-limb XOR is `0` iff the
+//!   canonical limbs match, and the canonical-bounded property
+//!   ([`redc`]'s post-condition: each limb below `2^51`) is exactly
+//!   what makes the trick correct here, the same precondition [`modis0`]
+//!   relies on for its single-OR-fold variant. The `-(uint32_t)`
+//!   wrapper turns the inner `{0, 1}` result into the
+//!   `{0, 0xFFFFFFFF}` mask the rest of the codebase consumes (the same
+//!   negation used by [`fp_is_zero`]). The port reuses the
+//!   `redc`/`modfsb`/`flatten` chain ported with [`fp_is_zero`] (commit
+//!   `1fd71e360e6a42ee704f0436a63f91dc5916931e`) verbatim, and adds
+//!   `modcmp` as a new internal helper alongside [`modis0`]; the
+//!   per-limb zero-detect application is precisely the same bit
+//!   pattern, just five times over `c[i] ^ d[i]` rather than once over
+//!   the OR-fold. The differential battery exercises the cross product
+//!   of the 12-pattern edge set (including the radix-2^51 encoding of
+//!   `p` itself) plus the 1000-seed pseudo-random sweep, so multiple
+//!   pairs reduce to the same canonical form via different
+//!   non-canonical representatives (the `(canonical zero, p as limbs)`
+//!   pair in particular: `redc` brings both to `[0, 0, 0, 0, 0]`,
+//!   `fp_is_equal` returns the all-ones mask). No upstream defect
+//!   observed; every committed C-derived vector replays bit-for-bit.
 //!
 //! Correctness is established as for the whole port: every committed
 //! C-derived vector is replayed and bit-compared (`tests/`). Equivalence
@@ -1163,4 +1193,109 @@ fn modis0(a: &Fp) -> u32 {
 /// returns the all-ones mask.
 pub fn fp_is_zero(a: &Fp) -> u32 {
     0u32.wrapping_sub(modis0(a))
+}
+
+/// Test whether the field elements represented by `a` and `b` are equal.
+/// Returns `1` if they are, else `0` (a plain integer; [`fp_is_equal`]
+/// negates it to the `0xFFFFFFFF`/`0` mask the rest of the codebase
+/// consumes).
+///
+/// Mirrors the reference's
+/// `static int modcmp(const spint *a, const spint *b)`:
+///
+/// ```c
+/// spint c[5], d[5];
+/// int i, eq = 1;
+/// redc(a, c);
+/// redc(b, d);
+/// for (i = 0; i < 5; i++) {
+///   eq &= (((c[i] ^ d[i]) - 1) >> 51) & 1;
+/// }
+/// return eq;
+/// ```
+///
+/// Three faithfully reproduced subtleties:
+/// 1. Both operands are reduced via [`redc`] (Montgomery to canonical) so
+///    each limb of `c` and `d` is below `2^51`. The post-condition is
+///    exactly what makes the `(x - 1) >> 51 & 1` zero-detect trick
+///    correct in subtlety (2): the canonical-bounded property is the
+///    same precondition [`modis0`] relies on for its single-OR-fold
+///    variant.
+/// 2. The per-limb application of the zero-detect trick. For each limb
+///    `i`, let `x = c[i] ^ d[i]`: `x == 0` iff the canonical limbs
+///    match. Then `(x - 1) >> 51 & 1` is `1` iff `x == 0` (`0 - 1`
+///    wraps to `0xFFFF_FFFF_FFFF_FFFF` whose `>> 51` has bit 0 set;
+///    canonical `x` is bounded above by the OR of canonical limbs each
+///    below `2^51`, so `x < 2^51` and `x - 1 < 2^51` is non-negative,
+///    `>> 51 == 0`, low bit `0`). This is precisely the bit pattern
+///    [`modis0`] uses; the only difference is that [`modis0`] applies
+///    it once to the OR-fold `d` of one operand's canonical limbs,
+///    while `modcmp` applies it five times to per-limb XORs of two
+///    operands' canonical limbs.
+/// 3. `eq` is an `int` initialised to `1` and AND-ed with each per-limb
+///    `{0, 1}` bit. The final value is `1` iff every limb XOR was zero,
+///    else `0`. The port uses `u32` for `eq` (the inner-bit type, so
+///    the AND is a `u32 & u32` matching the C `int & int` modulo the
+///    `int01` invariant on the right operand: each per-limb bit is
+///    `{0, 1}` regardless of the C type chosen). Equivalently `i32`
+///    would work; `u32` makes the return-type widen at the call site
+///    obvious. All arithmetic is unsigned `u64` wraparound (each
+///    `(x - 1)` underflows silently when `x == 0`, exactly as the
+///    reference's `spint == uint64_t`).
+///
+/// The return is a plain `u32` `{0, 1}` so the caller can either consume
+/// the boolean directly (the way `modis1`'s wrapper ANDs two such bits)
+/// or negate it to the `0xFFFFFFFF`/`0` mask the public boundary
+/// returns.
+fn modcmp(a: &Fp, b: &Fp) -> u32 {
+    let mut c: Fp = [0u64; NWORDS_FIELD];
+    let mut d: Fp = [0u64; NWORDS_FIELD];
+    redc(a, &mut c);
+    redc(b, &mut d);
+    let mut eq: u32 = 1;
+    for i in 0..NWORDS_FIELD {
+        let x = c[i] ^ d[i];
+        eq &= ((x.wrapping_sub(1) >> 51) & 1) as u32;
+    }
+    eq
+}
+
+/// GF(p) equality predicate: returns the constant-time mask `0xFFFFFFFF`
+/// if `a` and `b` represent the same field element, else `0`.
+///
+/// Mirrors the reference's
+/// `uint32_t fp_is_equal(const fp_t *a, const fp_t *b) { return
+/// -(uint32_t)modcmp(*a, *b); }` from `fp_p5248_64.c:574..578`.
+/// [`modcmp`] returns `0` or `1`; the `-(uint32_t)` cast turns that into
+/// the `0xFFFFFFFF`/`0` mask downstream consumers ([`fp_select`],
+/// [`fp_cswap`]'s LSB, the `fp2_is_equal` AND-of-two-fp_is_equals)
+/// expect.
+///
+/// The cast chain `-(uint32_t)int01` in C is identical to the one
+/// [`fp_is_zero`] uses: widen the `int` `{0, 1}` to `uint32_t` (no-op
+/// for non-negative values), then negate as `uint32_t` (wraparound:
+/// `0 -> 0`, `1 -> 0xFFFFFFFF`). The port reproduces this as
+/// `0u32.wrapping_sub(modcmp(a, b))`, which is bit-for-bit the same:
+/// `0u32 - 0 == 0`, `0u32 - 1 == 0xFFFFFFFF` under `u32` wraparound.
+/// The alternative spelling `modcmp(a, b).wrapping_neg()` is identical.
+///
+/// Operates on the redundant, non-canonical radix-2^51 form: the
+/// reference's [`modcmp`] first calls [`redc`] on **both** operands to
+/// canonicalise them, so this is the *value* equality predicate
+/// (i.e. `a == b mod p`), not raw-limb equality of the two limb
+/// vectors. Two distinct redundant representatives of the same field
+/// element (e.g. `[0, 0, 0, 0, 0]` and the radix-2^51 encoding of `p`
+/// itself, `[MASK51, MASK51, MASK51, MASK51, P4 - 1]`, both
+/// representing `0 mod p`) yield the all-ones mask.
+///
+/// Reflexivity (`fp_is_equal(a, a) == 0xFFFFFFFF`) holds for arbitrary
+/// `a`: `redc(a) == redc(a)` bit-for-bit (the reference's [`redc`] is
+/// deterministic with no global state), so every per-limb XOR is `0`,
+/// every per-limb bit is `1`, the AND-fold is `1`, and the wrapper
+/// returns the all-ones mask. Symmetry (`fp_is_equal(a, b) ==
+/// fp_is_equal(b, a)`) holds bit-for-bit: XOR is symmetric, the per-limb
+/// `{0, 1}` bits are independent of operand order, and the AND-fold is
+/// commutative.
+pub fn fp_is_equal(a: &Fp, b: &Fp) -> u32 {
+    0u32.wrapping_sub(modcmp(a, b))
 }
