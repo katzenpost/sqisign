@@ -49,6 +49,12 @@
 //!   defect observed; every committed C-derived vector replays
 //!   bit-for-bit, and the all-zero input maps to the bit-exact canonical
 //!   all-zero representative.
+//! - [`fp_copy`] is `fp_copy(out, a)`, the thin wrapper the reference
+//!   defines over `modcpy`: a plain five-limb assignment, `out[i] = a[i]`
+//!   for `i` in `0..5`. No `prop`, no `2p` correction, no reduction. It
+//!   is bit-exact on every input by construction, including non-canonical
+//!   limbs: the recorded output equals the recorded input limb for limb
+//!   on the full 1012-vector battery. No upstream defect observed.
 //!
 //! Correctness is established as for the whole port: every committed
 //! C-derived vector is replayed and bit-compared (`tests/`). Equivalence
@@ -288,4 +294,26 @@ fn modneg(b: &Fp, n: &mut Fp) {
 /// all-zero representative is the bit-exact all-zero representative.
 pub fn fp_neg(out: &mut Fp, a: &Fp) {
     modneg(a, out);
+}
+
+/// GF(p) assignment `out = a`, in the redundant radix-2^51 representation.
+///
+/// Mirrors the reference's `void fp_copy(fp_t *out, const fp_t *a)`, which
+/// is the thin wrapper `modcpy(*a, *out)`:
+///
+/// ```c
+/// inline static void modcpy(const spint *a, spint *c) {
+///   for (int i = 0; i < 5; i++) c[i] = a[i];
+/// }
+/// ```
+///
+/// A plain five-limb assignment: no `prop`, no `2p` correction, no
+/// reduction. The output is bit-exact equal to the input by construction,
+/// including for non-canonical limbs (the reference makes no assumption
+/// about its argument's range and neither does the port). Unlike
+/// [`fp_add`], [`fp_sub`] and [`fp_neg`], `fp_copy` is therefore exactly
+/// raw-limb-equal on its output rather than merely a valid representative
+/// of the same residue class.
+pub fn fp_copy(out: &mut Fp, a: &Fp) {
+    *out = *a;
 }

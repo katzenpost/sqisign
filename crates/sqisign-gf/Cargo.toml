@@ -29,3 +29,7 @@ harness = false
 [[bench]]
 name = "fp_neg"
 harness = false
+
+[[bench]]
+name = "fp_copy"
+harness = false
