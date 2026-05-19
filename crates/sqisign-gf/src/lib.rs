@@ -141,6 +141,34 @@
 //!   endpoints are pinned, and the LSB-only contract is pinned by
 //!   recording two non-canonical ctl values (`0xfffffffe` acts as `0`,
 //!   `0xffffffff` acts as `1`).
+//! - [`fp_is_zero`] is `fp_is_zero(a)`, the predicate boundary returning
+//!   a `uint32_t` mask (`0xFFFFFFFF` for zero, `0` for nonzero). It is
+//!   the thin wrapper the reference defines over `modis0`, which first
+//!   `redc`s its argument to the canonical representative (an ordinary
+//!   non-Montgomery limb vector with limbs `< 2^51` and positional value
+//!   `< p`) and then OR-folds the five limbs into a single `spint d`;
+//!   the bit-twiddle `(d - 1) >> 51 & 1` returns `1` when `d == 0`
+//!   (`0 - 1` wraps to `0xFFFF_FFFF_FFFF_FFFF`, whose 51-bit-right shift
+//!   has bit 0 set) and `0` otherwise (canonical `d` is bounded by the
+//!   OR of canonical limbs each below `2^51`, so `d < 2^51` and
+//!   `d - 1 < 2^51`, whose 51-bit shift is zero). The `-(uint32_t)`
+//!   wrapper turns the `{0, 1}` result into the mask `{0, 0xFFFFFFFF}`
+//!   the rest of the codebase consumes (e.g. `fp_select(d, _, _, ctl)`
+//!   takes exactly such a mask). The Montgomery reduction path is the
+//!   first appearance of `redc`/`modfsb`/`flatten`, which are ported as
+//!   internal helpers here even though `redc`/`modfsb` themselves have
+//!   no public boundary yet: `redc` is `modmul(n, [1, 0, 0, 0, 0]) +
+//!   modfsb`, which inverts the Montgomery factor (and so reads off the
+//!   ordinary residue of the n-residue), and `modfsb` (followed
+//!   internally by `flatten`) performs the conditional final subtraction
+//!   of `p` that brings the redundant `[2p)` representative back into
+//!   `[0, p)`. The differential boundary records arbitrary five-limb
+//!   inputs (the C-derived battery deliberately includes non-canonical
+//!   limbs and several non-canonical encodings of the field zero); on
+//!   those, the reference's `modis0` does fire `redc` first, so the port
+//!   must reproduce the full Montgomery reduction chain bit-for-bit at
+//!   the predicate level. No upstream defect observed; every committed
+//!   C-derived vector replays bit-for-bit.
 //! - [`fp_sqr`] is `fp_sqr(out, a)`, the thin wrapper the reference
 //!   defines over `modsqr`: Montgomery modular squaring on the level-1
 //!   generic field. `modsqr` is the squaring specialisation of `modmul`:
@@ -949,4 +977,190 @@ fn modsqr(a: &Fp, c: &mut Fp) {
 /// `fp_sqr_props.rs`.
 pub fn fp_sqr(out: &mut Fp, a: &Fp) {
     modsqr(a, out);
+}
+
+/// Propagate carries and, if `prop` signalled the value went negative,
+/// add `p` back limbwise; propagate carries once more. Returns `1` if the
+/// correction fired, else `0`.
+///
+/// Mirrors the reference's
+/// `inline static int flatten(spint *n)`:
+///
+/// ```c
+/// spint carry = prop(n);
+/// n[0] -= (spint)1u & carry;
+/// n[4] += ((spint)0x500000000000u) & carry;
+/// (void)prop(n);
+/// return (int)(carry & 1);
+/// ```
+///
+/// Composition with [`modfsb`] is the load-bearing thing to understand:
+/// `modfsb` pre-adds `+1` at limb 0 and `-p4` at limb 4 (effectively a
+/// trial `-p` in the redundant representation, since the level-1 prime
+/// `p5248 = 5 * 2^248 - 1` has only `p4` non-zero in the radix-2^51
+/// layout and the `-1` constant is the `-(-1)` from `p`'s low term), then
+/// calls `flatten`. `flatten` then runs `prop`, which returns an all-ones
+/// `carry` mask iff the value went negative; on that branch, `flatten`
+/// adds the just-subtracted `p` back limbwise (the `+1 & carry` at limb 0
+/// and `+p4 & carry` at limb 4) and propagates carries once more. The
+/// returned `(int)(carry & 1)` is `1` exactly when the trial subtraction
+/// was undone (i.e. the input was already below `p`); the reference's
+/// `redc` discards this return value (`(void)modfsb(m);`), and the port
+/// preserves the return for symmetry even though [`redc`] does the same.
+///
+/// All arithmetic is unsigned `u64` wraparound, exactly as in the
+/// reference's `spint == uint64_t`: `n[0] -= 1 & carry` is
+/// `n[0].wrapping_sub(1 & carry)` and so on. The `& carry` mask is `0`
+/// or all-ones, so the corrections are either no-ops or full-width adds
+/// of the prime's limb contributions.
+fn flatten(n: &mut Fp) -> i32 {
+    let carry = prop(n);
+    n[0] = n[0].wrapping_sub(1 & carry);
+    n[4] = n[4].wrapping_add(P4 & carry);
+    let _ = prop(n);
+    (carry & 1) as i32
+}
+
+/// Montgomery final subtract: trial-subtract `p` limbwise, then [`flatten`]
+/// (which propagates and conditionally adds `p` back if the value went
+/// negative). Returns `1` if the final value is below `p` already (the
+/// correction undid the trial subtraction), else `0`.
+///
+/// Mirrors the reference's
+/// `inline static int modfsb(spint *n)`:
+///
+/// ```c
+/// n[0] += (spint)1u;
+/// n[4] -= (spint)0x500000000000u;
+/// return flatten(n);
+/// ```
+///
+/// The `+1` at limb 0 and `-p4` at limb 4 together form the trial
+/// `-p` in the redundant radix-2^51 form: the level-1 prime
+/// `p5248 = 5 * 2^248 - 1` decomposes as `+p4 << (51*4) - 1` in this
+/// layout, so subtracting it is `-(+1) + (-p4)` at limbs 0 and 4
+/// respectively. [`flatten`] then runs `prop`; if the running value went
+/// negative under the trial subtraction (the `prop` carry mask is all
+/// ones), [`flatten`] adds `p` back limbwise (`+1` at limb 0, `+p4` at
+/// limb 4) and propagates once more. The cumulative effect is: if the
+/// input was `>= p`, leave the canonical reduced value below `p`; if it
+/// was already below `p`, restore the original. This is exactly the
+/// behaviour [`redc`] needs to canonicalise the Montgomery output of
+/// `modmul`'s redundant `[0, 2p)` representative.
+///
+/// Wrapping `u64` arithmetic throughout matches the reference's
+/// `spint == uint64_t` two's-complement wraparound (the `-p4` underflows
+/// silently and is fixed up by the subsequent `+p4` on the
+/// negative-branch).
+fn modfsb(n: &mut Fp) -> i32 {
+    n[0] = n[0].wrapping_add(1);
+    n[4] = n[4].wrapping_sub(P4);
+    flatten(n)
+}
+
+/// Convert an n-residue back to its ordinary residue: `m = n * R^-1 mod p`,
+/// fully canonical (`m[0..=3] < 2^51`, positional value `< p`).
+///
+/// Mirrors the reference's
+/// `static void redc(const spint *n, spint *m)`:
+///
+/// ```c
+/// spint c[5] = {1, 0, 0, 0, 0};
+/// modmul(n, c, m);
+/// (void)modfsb(m);
+/// ```
+///
+/// The trick: `modmul(n, [1, 0, 0, 0, 0])` is exactly the Montgomery
+/// reduction `n * 1 * R^-1 mod p` (multiplication by positional `1`
+/// followed by `modmul`'s inline Montgomery reduction), which leaves a
+/// redundant `[0, 2p)` representative of the ordinary residue. [`modfsb`]
+/// then performs the conditional final subtraction of `p` to bring the
+/// result fully into `[0, p)`. The `(void)modfsb(m);` discards the
+/// `flatten` return value, and the port follows: the return is ignored
+/// here, used only for the return-value contract of [`modfsb`]/[`flatten`]
+/// themselves (callers outside [`redc`] that need it can read it).
+fn redc(n: &Fp, m: &mut Fp) {
+    let c: Fp = [1, 0, 0, 0, 0];
+    modmul(n, &c, m);
+    let _ = modfsb(m);
+}
+
+/// Test whether the field element represented by `a` is zero. Returns `1`
+/// if zero, else `0` (a plain integer; [`fp_is_zero`] negates it to the
+/// `0xFFFFFFFF`/`0` mask the rest of the codebase consumes).
+///
+/// Mirrors the reference's
+/// `static int modis0(const spint *a)`:
+///
+/// ```c
+/// spint c[5];
+/// spint d = 0;
+/// redc(a, c);
+/// for (i = 0; i < 5; i++) d |= c[i];
+/// return ((spint)1 & ((d - (spint)1) >> 51u));
+/// ```
+///
+/// Two faithfully reproduced subtleties:
+/// 1. `redc(a, c)` is not a no-op: the differential boundary records
+///    non-canonical limb encodings of the field zero as well as the
+///    canonical one (the C-derived battery includes patterns like
+///    `[mask51, mask51, mask51, mask51, p4]`, several representatives of
+///    `0 mod p` in the redundant form, and arbitrary full-width limbs).
+///    For any such representative, `redc` returns the canonical reduced
+///    value (with `c[0..=3] < 2^51`, positional value `< p`), so the OR
+///    of the canonical limbs is `0` iff the input was congruent to zero.
+/// 2. The `((d - 1) >> 51) & 1` bit-twiddle: when `d == 0`,
+///    `d - 1 == 0xFFFF_FFFF_FFFF_FFFF` (unsigned wraparound), whose
+///    51-bit right shift `>> 51u` is `0x1FFF` (the top 13 bits packed),
+///    whose low bit is `1`; the masked result is `1`. When `d != 0`,
+///    `d` is the OR of canonical limbs each below `2^51`, so `d < 2^51`,
+///    `d - 1 < 2^51 - 1` is non-negative, and `(d - 1) >> 51 == 0`, so
+///    the masked result is `0`. The trick is faithful in `u64` wrapping
+///    arithmetic for *canonical* `d`; this is exactly the domain the
+///    `redc` precondition delivers, regardless of how non-canonical the
+///    input was. (For arbitrary `u64 d`, the trick is not the same as
+///    `d == 0`: e.g. `d = 1 << 51` gives `d - 1 = (1 << 51) - 1` whose
+///    `>> 51` is `0`, then `& 1` is `0`, so it would report "zero" for a
+///    nonzero `d`; this is fine because the canonical-bounded property
+///    keeps us strictly below `2^51`.)
+///
+/// The return is a plain `u32` `{0, 1}` so the caller can either consume
+/// the boolean directly (the way `modis1`'s wrapper ANDs two such bits)
+/// or negate it to the `0xFFFFFFFF`/`0` mask the public boundary
+/// returns.
+fn modis0(a: &Fp) -> u32 {
+    let mut c: Fp = [0u64; NWORDS_FIELD];
+    redc(a, &mut c);
+    let mut d: u64 = 0;
+    for limb in &c {
+        d |= *limb;
+    }
+    (1u64 & (d.wrapping_sub(1) >> 51)) as u32
+}
+
+/// GF(p) zero predicate: returns the constant-time mask `0xFFFFFFFF` if
+/// `a` represents the field zero, else `0`.
+///
+/// Mirrors the reference's
+/// `uint32_t fp_is_zero(const fp_t *a) { return -(uint32_t)modis0(*a); }`
+/// from `fp_p5248_64.c:581..584`. [`modis0`] returns `0` or `1`; the
+/// `-(uint32_t)` cast turns that into the `0xFFFFFFFF`/`0` mask
+/// downstream consumers (`fp_select`, `fp_cswap`'s LSB, the
+/// `fp2_is_zero` AND-of-two-fp_is_zeros) expect.
+///
+/// The cast chain `-(uint32_t)int01` in C is: widen the `int` `{0, 1}` to
+/// `uint32_t` (no-op for non-negative values), then negate as `uint32_t`
+/// (wraparound: `0 -> 0`, `1 -> 0xFFFFFFFF`). The port reproduces this as
+/// `0u32.wrapping_sub(modis0(a))`, which is bit-for-bit the same:
+/// `0u32 - 0 == 0`, `0u32 - 1 == 0xFFFFFFFF` under `u32` wraparound. The
+/// alternative spelling `modis0(a).wrapping_neg()` is identical.
+///
+/// Operates on the redundant, non-canonical radix-2^51 form: the
+/// reference's [`modis0`] first calls [`redc`] to canonicalise, so this
+/// is the *value* zero predicate (i.e. `a == 0 mod p`), not raw-limb
+/// equality to `[0, 0, 0, 0, 0]`. Any redundant representative of `0`
+/// (e.g. `[1, 0, 0, 0, p4]`, which represents `1 + p4 << (51*4) = p`)
+/// returns the all-ones mask.
+pub fn fp_is_zero(a: &Fp) -> u32 {
+    0u32.wrapping_sub(modis0(a))
 }

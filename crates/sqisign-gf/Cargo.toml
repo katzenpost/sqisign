@@ -57,3 +57,7 @@ harness = false
 [[bench]]
 name = "fp_cswap"
 harness = false
+
+[[bench]]
+name = "fp_is_zero"
+harness = false

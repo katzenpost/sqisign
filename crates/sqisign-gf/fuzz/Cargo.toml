@@ -84,3 +84,10 @@ path = "fuzz_targets/fp_cswap.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "fp_is_zero"
+path = "fuzz_targets/fp_is_zero.rs"
+test = false
+doc = false
+bench = false
