@@ -67,6 +67,10 @@ name = "swap_ct"
 harness = false
 
 [[bench]]
+name = "mp_inv_2e"
+harness = false
+
+[[bench]]
 name = "mp_shiftl"
 harness = false
 

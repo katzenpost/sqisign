@@ -54,6 +54,9 @@
 //! - [`swap_ct`] is `swap_ct(a, b, option, nwords)`: branchless
 //!   conditional swap in place (no-op if `option==0`, swap if
 //!   `option==!0`). No quirk; 1049 vectors == the per-bit swap.
+//! - [`mp_inv_2e`] is `mp_inv_2e(b, a, e, nwords)`: Newton/Hensel
+//!   modular inverse mod `2^w` (w from e). A faithful composition of
+//!   the proven primitives; 1180 vectors, all `a*b == 1 mod 2^e`.
 //! - [`mp_neg`] is `mp_neg(a, nwords)`. **Third faithful reproduction**:
 //!   the reference adds the two's-complement `+1` to limb 0 only with no
 //!   carry propagation, so it equals `-a` iff `a[0] != 0`. 1042 vectors,
@@ -514,6 +517,92 @@ pub fn swap_ct(a: &mut [u64], b: &mut [u64], option: u64) {
     }
 }
 
+/// Modular inverse of `a` modulo `2^w`, written to `b`, by Newton's
+/// method with Hensel lifting, mirroring the reference's `void
+/// mp_inv_2e(digit_t *b, const digit_t *a, int e, unsigned int nwords)`.
+///
+/// `w` is derived from `e` exactly as the reference does: `p` is the
+/// smallest integer with `2^p >= e`, then `p -= 2` (a 4-bit initial
+/// inverse), and `w = 1 << (p + 2)`. A length-4-bit seed inverse is
+/// lifted `p` times, each round doubling the correct bit count, so
+/// `a * b == 1 mod 2^min(w, 64*nwords)`. Within the SQIsign widths the
+/// committed vectors all satisfy `a * b == 1 mod 2^e`.
+///
+/// This is a pure structural transcription of the reference: it composes
+/// the already-vector-proven [`mp_copy`], [`mp_mod_2exp`], [`mp_add`],
+/// [`mp_mul`] and [`mp_neg`], so any reference behaviour (including the
+/// `mp_mul`/`mp_neg` quirks at the inputs that would reach them) is
+/// reproduced by construction. The reference requires `a` odd and
+/// self-verifies; both are mirrored.
+///
+/// # Panics
+/// If `a`/`b` differ in length, `a` is empty, or `a` is even.
+pub fn mp_inv_2e(b: &mut [u64], a: &[u64], e: i32) {
+    let n = a.len();
+    assert!(b.len() == n, "mp_inv_2e: a and b must share one nwords");
+    assert!(n >= 1 && a[0] & 1 == 1, "mp_inv_2e: a must be odd");
+
+    let mut aa = vec![0u64; n];
+    mp_copy(&mut aa, a);
+
+    let mut mp_one = vec![0u64; n];
+    mp_one[0] = 1;
+
+    let mut p: i32 = 1;
+    while (1i64 << p) < e as i64 {
+        p += 1;
+    }
+    p -= 2; // k = 4 for the initial inverse
+    let w: u32 = 1u32 << (p + 2); // p + 2 >= 1 for e >= 1
+
+    mp_mod_2exp(&mut aa, w);
+
+    // x <- (3*aa) xor 2, reduced; then x*a == 1 mod 2^4.
+    let mut x = vec![0u64; n];
+    {
+        let mut t = vec![0u64; n];
+        mp_add(&mut t, &aa, &aa); // 2*aa
+        mp_add(&mut x, &t, &aa); // 3*aa
+    }
+    x[0] ^= 1u64 << 1;
+    mp_mod_2exp(&mut x, w);
+
+    // y <- 1 - aa*x.
+    let mut y = vec![0u64; n];
+    {
+        let mut tmp = vec![0u64; n];
+        mp_mul(&mut tmp, &aa, &x);
+        mp_neg(&mut tmp);
+        mp_add(&mut y, &mp_one, &tmp);
+    }
+
+    // Hensel lifting for p rounds (p <= 0 -> none). The reference calls
+    // mp_mul in place (c aliasing a); mp_mul accumulates into a scratch
+    // and copies out, so a non-aliased buffer reproduces it exactly.
+    for _ in 0..p {
+        let mut tmp = vec![0u64; n];
+        mp_add(&mut tmp, &mp_one, &y); // 1 + y
+        let mut xn = vec![0u64; n];
+        mp_mul(&mut xn, &x, &tmp);
+        x.copy_from_slice(&xn);
+        let mut yn = vec![0u64; n];
+        mp_mul(&mut yn, &y, &y);
+        y.copy_from_slice(&yn);
+    }
+
+    mp_mod_2exp(&mut x, w);
+    b.copy_from_slice(&x);
+
+    // The reference's self-verification: x*aa == 1 mod 2^w.
+    #[cfg(debug_assertions)]
+    {
+        let mut chk = vec![0u64; n];
+        mp_mul(&mut chk, &x, &aa);
+        mp_mod_2exp(&mut chk, w);
+        debug_assert!(mp_is_one(&chk), "mp_inv_2e: self-check failed");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -533,6 +622,35 @@ mod tests {
         let mut c = [0u64; 2];
         mp_add(&mut c, &[u64::MAX, u64::MAX], &[1, 0]);
         assert_eq!(c, [0, 0]);
+    }
+
+    #[test]
+    fn inv_2e_is_a_modular_inverse() {
+        // a = 3, e = 8, two limbs: 3 * b == 1 mod 2^8.
+        let a = [3u64, 0];
+        let mut b = [0u64; 2];
+        mp_inv_2e(&mut b, &a, 8);
+        let prod = (a[0] as u128).wrapping_mul(b[0] as u128)
+            | (((a[1] as u128) | ((b[1] as u128) << 64)) << 64);
+        assert_eq!(prod % (1u128 << 8), 1, "3 * inv != 1 mod 2^8");
+        // a = 1 inverts to 1.
+        let mut b = [0u64; 2];
+        mp_inv_2e(&mut b, &[1u64, 0], 64);
+        assert_eq!(b, [1, 0]);
+        // Odd random-ish value, full two-limb width.
+        let a = [0x0123_4567_89ab_cdefu64, 0xfedc_ba98_7654_3210u64];
+        let mut b = [0u64; 2];
+        mp_inv_2e(&mut b, &a, 128);
+        let av = (a[0] as u128) | ((a[1] as u128) << 64);
+        let bv = (b[0] as u128) | ((b[1] as u128) << 64);
+        assert_eq!(av.wrapping_mul(bv), 1, "a * inv != 1 mod 2^128");
+    }
+
+    #[test]
+    #[should_panic(expected = "a must be odd")]
+    fn inv_2e_rejects_even() {
+        let mut b = [0u64; 2];
+        mp_inv_2e(&mut b, &[4u64, 0], 16);
     }
 
     #[test]

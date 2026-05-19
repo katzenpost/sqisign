@@ -100,6 +100,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "mp_inv_2e"
+path = "fuzz_targets/mp_inv_2e.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "mp_shiftl"
 path = "fuzz_targets/mp_shiftl.rs"
 test = false
