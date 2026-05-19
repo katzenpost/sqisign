@@ -191,6 +191,26 @@
 //!   and commutative, so the running `t` is bit-equal at every masking
 //!   point. No upstream defect observed; every committed C-derived vector
 //!   replays bit-for-bit.
+//! - [`fp_half`] is `fp_half(out, a)`, the thin wrapper the reference
+//!   defines over `modmul`, multiplying by the precomputed Montgomery
+//!   representative of `2^-1 mod p`. The reference literally is
+//!   `modmul(TWO_INV, *a, *out);` (see `fp_p5248_64.c:646..650`); the
+//!   port mirrors that one-line call site exactly, dispatching through
+//!   the already-ported [`fp_mul`]'s `modmul` core. `TWO_INV` is the
+//!   precomputed `extern const`-style limb table from
+//!   `fp_p5248_64.c:532..537`, transcribed bit-for-bit into the internal
+//!   constant [`TWO_INV`], the Montgomery representative of `2^-1 mod p`.
+//!   The output is, as for [`fp_mul`], a redundant `[0, 2p)`
+//!   representative (limbs 0..=3 below `2^51`, limb 4 unmasked); compare
+//!   with [`fp_is_equal`] (the value-level equality), not raw-limb
+//!   equality. The empirical equivalence `fp_half(a) == fp_mul(&TWO_INV,
+//!   a)` is bit-exact by construction (`fp_half` *is* exactly that call)
+//!   and is checked at the property boundary as a sanity oracle. The
+//!   value-level identity `2 * fp_half(a) == a mod p` is also pinned via
+//!   [`fp_is_equal`], turning the just-landed equality predicate into an
+//!   independent value-level oracle for the halving operation. No
+//!   upstream defect observed; every committed C-derived vector replays
+//!   bit-for-bit.
 //! - [`fp_is_equal`] is `fp_is_equal(a, b)`, the second predicate boundary
 //!   in the gf battery: a *binary* predicate returning the same
 //!   `uint32_t` mask shape as [`fp_is_zero`] (`0xFFFFFFFF` when `a` and
@@ -1007,6 +1027,75 @@ fn modsqr(a: &Fp, c: &mut Fp) {
 /// `fp_sqr_props.rs`.
 pub fn fp_sqr(out: &mut Fp, a: &Fp) {
     modsqr(a, out);
+}
+
+/// Montgomery representative of `2^-1 mod p` on the level-1 generic
+/// field: the precomputed constant `2^-1 * R mod p` in the unsaturated
+/// radix-2^51 limb layout, transcribed verbatim from the reference's
+/// `static const digit_t TWO_INV[NWORDS_FIELD]` at
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:532..536`:
+///
+/// ```c
+/// // Montgomery representation of 2^-1
+/// static const digit_t TWO_INV[NWORDS_FIELD] = { 0x000000000000000c,
+///                                                0x0000000000000000,
+///                                                0x0000000000000000,
+///                                                0x0000000000000000,
+///                                                0x0000400000000000 };
+/// ```
+///
+/// Used by [`fp_half`], the thin wrapper `modmul(TWO_INV, *a, *out)`. The
+/// constant is taken verbatim; no derivation is performed at the port
+/// (deriving it would require the Montgomery `R^2` constant and `nres`,
+/// neither of which is ported yet). The bit-for-bit correspondence with
+/// the reference is the load-bearing property; the value-level identity
+/// `2 * (TWO_INV * a * R^-1) == a mod p` is checked at the property
+/// boundary via [`fp_is_equal`].
+const TWO_INV: Fp = [
+    0x0000_0000_0000_000c,
+    0x0000_0000_0000_0000,
+    0x0000_0000_0000_0000,
+    0x0000_0000_0000_0000,
+    0x0000_4000_0000_0000,
+];
+
+/// GF(p) Montgomery halving `out = a / 2 mod p`, in the redundant
+/// radix-2^51 representation, reduced to less than `2p`.
+///
+/// Mirrors the reference's `void fp_half(fp_t *out, const fp_t *a)`
+/// (`vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:646..650`), which
+/// is the one-liner `modmul(TWO_INV, *a, *out);`. The port is the same
+/// one-liner: a single `modmul` call with the constant [`TWO_INV`] (the
+/// Montgomery representative of `2^-1 mod p`) as the first operand and
+/// `a` as the second, threading through the already-ported [`fp_mul`]'s
+/// `modmul` core. No new arithmetic of any kind is introduced.
+///
+/// Two faithfully reproduced subtleties from the underlying [`fp_mul`]
+/// path:
+/// 1. The output is *not* fully canonical: limbs 0..=3 are below `2^51`
+///    (the column mask) but limb 4 is left unmasked (the final
+///    `c[4] = (spint)t` in `modmul` is a full 64-bit truncation of the
+///    residual accumulator, no `& mask`), exactly as the reference
+///    leaves it. Compare field elements with the value-level
+///    [`fp_is_equal`], never by raw-limb equality.
+/// 2. The Montgomery domain is preserved: if `a == A * R mod p`
+///    positionally, then `modmul(TWO_INV, a)` computes
+///    `(2^-1 * R) * (A * R) * R^-1 == (A / 2) * R mod p`. The output is
+///    the Montgomery representative of `A / 2`, ready to be consumed by
+///    further Montgomery-domain operations without re-conversion.
+///
+/// `TWO_INV` is taken **verbatim** from the reference's precomputed
+/// limb table at `fp_p5248_64.c:532..536`; the port does not derive it
+/// (deriving it would require `nres` and the Montgomery `R^2`
+/// constant, neither of which is ported). The bit-for-bit
+/// correspondence with the reference's constant is the load-bearing
+/// property; the value-level identity `2 * fp_half(a) == a mod p` is
+/// pinned at the property boundary via [`fp_is_equal`] (now that the
+/// equality predicate is ported, the doubling-back oracle is sound on
+/// the canonical-equality domain even though both sides are redundant
+/// limb vectors).
+pub fn fp_half(out: &mut Fp, a: &Fp) {
+    modmul(&TWO_INV, a, out);
 }
 
 /// Propagate carries and, if `prop` signalled the value went negative,

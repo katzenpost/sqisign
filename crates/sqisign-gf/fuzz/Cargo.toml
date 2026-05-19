@@ -51,6 +51,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "fp_half"
+path = "fuzz_targets/fp_half.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "fp_copy"
 path = "fuzz_targets/fp_copy.rs"
 test = false

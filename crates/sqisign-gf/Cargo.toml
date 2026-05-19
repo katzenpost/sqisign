@@ -39,6 +39,10 @@ name = "fp_sqr"
 harness = false
 
 [[bench]]
+name = "fp_half"
+harness = false
+
+[[bench]]
 name = "fp_copy"
 harness = false
 
