@@ -63,3 +63,10 @@ path = "fuzz_targets/fp_select.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "fp_cswap"
+path = "fuzz_targets/fp_cswap.rs"
+test = false
+doc = false
+bench = false

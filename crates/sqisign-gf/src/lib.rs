@@ -97,6 +97,25 @@
 //!   C-derived vector battery therefore exercises only the two declared
 //!   endpoints. No upstream defect observed; every committed C-derived
 //!   vector replays bit-for-bit.
+//! - [`fp_cswap`] is `fp_cswap(a, b, ctl)`, the branchless constant-time
+//!   conditional swap defined in `fp_p5248_64.c`. Its contract is
+//!   wider than [`fp_select`]'s: only the LSB of `ctl` is consulted
+//!   (the reference's wrapper narrows it via `(int)(ctl & 0x1)`), so
+//!   any `ctl` with `ctl & 1 == 0` is a no-op and any with `ctl & 1
+//!   == 1` swaps `a` and `b` limb for limb. The underlying `modcsw`
+//!   computes the swap as a cross-multiplication of the two operands
+//!   by `c0 = (1 - b) + r` and `c1 = b + r` (where `r` is the rotating
+//!   constant `0x3cc3c33c5aa5a55a` and the arithmetic is unsigned
+//!   wrapping on `spint == uint64_t`), subtracting `w = r * (t + s)`
+//!   from each cross product so the `r` term cancels and the residue
+//!   is `s` or `t` depending on `b`. The port reproduces the
+//!   `wrapping_add`/`wrapping_sub`/`wrapping_mul` chain on `u64`
+//!   bit-for-bit, and the `(ctl & 1) as u64` narrowing exactly mirrors
+//!   the reference's `(int)(ctl & 0x1)`. No upstream defect observed;
+//!   every committed C-derived vector replays bit-for-bit, both
+//!   endpoints are pinned, and the LSB-only contract is pinned by
+//!   recording two non-canonical ctl values (`0xfffffffe` acts as `0`,
+//!   `0xffffffff` acts as `1`).
 //!
 //! Correctness is established as for the whole port: every committed
 //! C-derived vector is replayed and bit-compared (`tests/`). Equivalence
@@ -468,4 +487,122 @@ pub fn fp_select(d: &mut Fp, a0: &Fp, a1: &Fp, ctl: u32) {
     for i in 0..NWORDS_FIELD {
         d[i] = a0[i] ^ (cw & (a0[i] ^ a1[i]));
     }
+}
+
+/// Rotating constant `r` used by `modcsw`'s cross-multiplication. The
+/// reference picks this 64-bit pattern (alternating nibbles
+/// `3c c3 c3 3c 5a a5 a5 5a`) so that `c0 = (1 - b) + r` and
+/// `c1 = b + r` have the same algebraic role in the per-limb update and
+/// the `w = r * (t + s)` subtraction cancels the `r` contribution on
+/// both `f` and `g`, leaving only the `s`/`t` cross-residue.
+const MODCSW_R: u64 = 0x3cc3_c33c_5aa5_a55a;
+
+/// Branchless constant-time conditional swap on the LSB of `b`.
+///
+/// Mirrors the reference's
+/// `static void modcsw(int b, volatile spint *g, volatile spint *f)`
+/// from `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:409..424`
+/// exactly:
+///
+/// ```c
+/// static void modcsw(int b, volatile spint *g, volatile spint *f) {
+///   int i;
+///   spint c0, c1, s, t, w;
+///   spint r = 0x3cc3c33c5aa5a55au;
+///   c0 = (1 - b) + r;
+///   c1 = b + r;
+///   for (i = 0; i < 5; i++) {
+///     s = g[i];
+///     t = f[i];
+///     w = r * (t + s);
+///     f[i] = c0 * t + c1 * s;
+///     f[i] -= w;
+///     g[i] = c0 * s + c1 * t;
+///     g[i] -= w;
+///   }
+/// }
+/// ```
+///
+/// Two faithfully reproduced subtleties:
+///
+/// 1. All arithmetic is on `spint == uint64_t` with two's-complement
+///    wraparound. The port uses `wrapping_add`/`wrapping_sub`/
+///    `wrapping_mul` on `u64` throughout so the bit pattern in every
+///    intermediate matches the reference's modulo-`2^64` value. Both
+///    `(1 - b) + r` (where `1 - b` is the unsigned subtraction
+///    `1u64.wrapping_sub(b)`) and `c0 * t + c1 * s - r * (t + s)` rely
+///    on this exact wraparound to cancel the `r` contribution.
+/// 2. `b` is `int` in the reference and the wrapper narrows
+///    `ctl` to `(int)(ctl & 0x1)`. Only the LSB matters; the higher
+///    bits of `ctl` are dropped before `b` is consumed. The port
+///    therefore does `let b = (ctl & 1) as u64` and feeds that to the
+///    `c0`/`c1` formulae directly: the resulting `u64` `b` is `0` or
+///    `1`, and `1u64.wrapping_sub(b)` is `1` or `0` respectively. The
+///    algebraic identity verified at both endpoints:
+///    - `b == 0`: `c0 = (1 + r)`, `c1 = r`. Then
+///      `f' = (1+r)*t + r*s - r*(t+s) = t + r*t + r*s - r*t - r*s = t`
+///      and symmetrically `g' = s`; the pair is unchanged.
+///    - `b == 1`: `c0 = r`, `c1 = (1 + r)`. Then
+///      `f' = r*t + (1+r)*s - r*(t+s) = r*t + s + r*s - r*t - r*s = s`
+///      and symmetrically `g' = t`; the pair is swapped.
+///
+/// The `volatile` qualifier on the reference's pointers is a side-effect
+/// hint for the C compiler (preventing it from elideing the writes or
+/// reordering them across the load) and has no observable effect at the
+/// differential `fp_t` boundary; the port reproduces the limb-by-limb
+/// reads and writes without any equivalent annotation (constant-time
+/// guarantees in Rust are out of scope for the port-correctness
+/// contract, exactly as for the existing constant-time ports
+/// `select_ct`, `swap_ct`, and [`fp_select`]).
+fn modcsw(b: u64, g: &mut Fp, f: &mut Fp) {
+    let r = MODCSW_R;
+    let c0 = 1u64.wrapping_sub(b).wrapping_add(r);
+    let c1 = b.wrapping_add(r);
+    // Explicit index `0..5` mirrors the reference's `for (i = 0; i < 5;
+    // i++)` exactly: each iteration reads then overwrites g[i] and f[i]
+    // through the running products. An iterator rewrite would obscure
+    // the bit-for-bit correspondence with the oracle, so the lint is
+    // silenced locally rather than the loop reshaped.
+    #[allow(clippy::needless_range_loop)]
+    for i in 0..NWORDS_FIELD {
+        let s = g[i];
+        let t = f[i];
+        let w = r.wrapping_mul(t.wrapping_add(s));
+        let new_f = c0.wrapping_mul(t).wrapping_add(c1.wrapping_mul(s));
+        f[i] = new_f.wrapping_sub(w);
+        let new_g = c0.wrapping_mul(s).wrapping_add(c1.wrapping_mul(t));
+        g[i] = new_g.wrapping_sub(w);
+    }
+}
+
+/// Branchless constant-time conditional swap on `fp_t`.
+///
+/// Mirrors the reference's
+/// `void fp_cswap(fp_t *a, fp_t *b, uint32_t ctl)` from
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:592..596`:
+///
+/// ```c
+/// void
+/// fp_cswap(fp_t *a, fp_t *b, uint32_t ctl)
+/// {
+///     modcsw((int)(ctl & 0x1), *a, *b);
+/// }
+/// ```
+///
+/// Only the **LSB** of `ctl` is consulted: the wrapper narrows it to
+/// `(int)(ctl & 0x1)` before passing it to `modcsw` (see `modcsw` for
+/// the cross-multiplication and the algebraic verification). When
+/// `ctl & 1 == 0`, `a` and `b` are left unchanged limb for limb; when
+/// `ctl & 1 == 1`, `a` and `b` are swapped limb for limb. The
+/// higher bits of `ctl` are not consulted, so `ctl = 0xfffffffe` is a
+/// no-op (LSB clear) and `ctl = 0xffffffff` is a swap (LSB set), in
+/// contrast to [`fp_select`] which requires the full 32-bit mask.
+///
+/// The port performs the same `ctl & 1` narrowing as
+/// `(ctl & 1) as u64`, matching the recorded boundary's encoding
+/// (the C harness records the raw `uint32_t` and the port consumes
+/// it identically).
+pub fn fp_cswap(a: &mut Fp, b: &mut Fp, ctl: u32) {
+    let bit = (ctl & 1) as u64;
+    modcsw(bit, a, b);
 }

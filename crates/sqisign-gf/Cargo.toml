@@ -45,3 +45,7 @@ harness = false
 [[bench]]
 name = "fp_select"
 harness = false
+
+[[bench]]
+name = "fp_cswap"
+harness = false
