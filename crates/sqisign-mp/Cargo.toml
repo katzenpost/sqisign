@@ -4,12 +4,20 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "SQIsign multiprecision integer arithmetic (saturated representation). Mirrors vendor/the-sqisign/src/mp."
+description = "SQIsign multiprecision integer arithmetic: fixed-width little-endian word arrays. Mirrors vendor/the-sqisign/src/mp."
 
+# No dependencies. The reference mp module is a self-contained word-array
+# library (no GCD/XGCD, no arbitrary precision), so the Rust port carries no
+# numeric dependency and no external-semantics risk (plan Open Question 1,
+# re-scoped: the bigint/gcdext concern belongs to quaternion, Phase 2/3).
 [dependencies]
-sqisign-common.workspace = true
 
 [dev-dependencies]
 sqisign-vectors.workspace = true
 hex.workspace = true
+proptest.workspace = true
 criterion.workspace = true
+
+[[bench]]
+name = "mp_add"
+harness = false
