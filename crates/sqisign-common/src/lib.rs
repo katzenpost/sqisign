@@ -17,9 +17,12 @@
 //! - [`hash::sha3_256`] / [`hash::sha3_384`] / [`hash::sha3_512`] are the
 //!   fixed-output SHA3 digests (`sqisign_common::sha3_256` etc.),
 //!   mirroring the reference's `sha3_256(out, in, inlen)` family.
+//! - [`rng::CtrDrbg`] is the NIST AES-256 CTR-DRBG
+//!   (`sqisign_common::ctr_drbg`), mirroring the reference's
+//!   `randombytes_init` / `randombytes`.
 //!
-//! Not yet ported (later units within Phase 1 `common`): seed expansion,
-//! the CTR-DRBG (`randombytes`), and the memory-zeroing utilities.
+//! Not yet ported (later units within Phase 1 `common`): seed expansion
+//! and the memory-zeroing utilities.
 //!
 //! Correctness is established the way the whole port is: every committed
 //! C-derived vector is replayed against this code (see the per-boundary
@@ -28,8 +31,10 @@
 #![forbid(unsafe_code)]
 
 pub mod hash;
+pub mod rng;
 
 pub use hash::{
     sha3_256, sha3_384, sha3_512, shake128, shake256, Shake128Absorb, Shake128Squeeze,
     Shake256Absorb, Shake256Squeeze,
 };
+pub use rng::CtrDrbg;

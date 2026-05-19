@@ -13,6 +13,10 @@ description = "SQIsign common: hashing (SHA-3/SHAKE), seed expansion, PRNG, memo
 # has had. Behavioural equivalence to the C reference is not assumed; it is
 # proven by the committed C-derived vectors (tests/shake256_vectors.rs).
 sha3.workspace = true
+# AES-256-ECB is the block-cipher core of the NIST CTR-DRBG. Same reasoning:
+# wire in the audited RustCrypto aes crate, prove the DRBG construction atop
+# it bit-equal to the reference (tests/ctr_drbg_vectors.rs).
+aes.workspace = true
 
 [dev-dependencies]
 sqisign-vectors.workspace = true
@@ -34,4 +38,8 @@ harness = false
 
 [[bench]]
 name = "sha3"
+harness = false
+
+[[bench]]
+name = "ctr_drbg"
 harness = false

@@ -50,9 +50,12 @@ hex = "0.4"
 proptest = "1"
 criterion = { version = "0.5", features = ["html_reports"] }
 
-# Dev-only oracle: a known-good SHAKE for Phase 0 to exercise the harness
-# end-to-end without writing any SQIsign code.
+# Audited RustCrypto primitives wired in behind the reference's boundaries
+# (the plan's "port a standardized primitive" = wire-and-prove, not
+# reimplement). sha3 backs the SHAKE/SHA3 hashes; aes backs the AES-256-ECB
+# core of the NIST CTR-DRBG. Equivalence is proven by C-derived vectors.
 sha3 = "0.10"
+aes = "0.9"
 
 [profile.bench]
 debug = true

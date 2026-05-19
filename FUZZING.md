@@ -18,6 +18,7 @@ toolchain.
 | `sqisign-common` | `shake128` | determinism, XOF prefix stability, distinct from SHAKE256 | link `fips202.c` for byte-equality vs C |
 | `sqisign-common` | `shake_inc` | incremental == one-shot for arbitrary absorb/squeeze chunking, both rates | link `fips202.c` for byte-equality vs C |
 | `sqisign-common` | `sha3` | determinism, intrinsic lengths, mutual distinctness of the three widths | link `fips202.c` for byte-equality vs C |
+| `sqisign-common` | `ctr_drbg` | determinism, draw reproducible from seed, state evolves identically across calls | link `randombytes_ctrdrbg.c` for byte-equality vs C |
 
 ## Running (on a host with the toolchain)
 

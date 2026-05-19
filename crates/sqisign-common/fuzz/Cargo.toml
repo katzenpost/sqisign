@@ -42,3 +42,10 @@ path = "fuzz_targets/sha3.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "ctr_drbg"
+path = "fuzz_targets/ctr_drbg.rs"
+test = false
+doc = false
+bench = false
