@@ -46,6 +46,8 @@
 //!   comparison (`1`/`0`/`-1`). No quirk; 1217 vectors == `sign(a-b)`.
 //! - [`mp_is_zero`] is `mp_is_zero(a, nwords)`: all-limbs-zero predicate.
 //!   No quirk; 1210 vectors.
+//! - [`mp_is_one`] is `mp_is_one(x, nwords)`: the "value is one"
+//!   predicate (`x[0]==1`, rest zero). No quirk; 1210 vectors.
 //! - [`mp_neg`] is `mp_neg(a, nwords)`. **Third faithful reproduction**:
 //!   the reference adds the two's-complement `+1` to limb 0 only with no
 //!   carry propagation, so it equals `-a` iff `a[0] != 0`. 1042 vectors,
@@ -448,6 +450,21 @@ pub fn mp_is_zero(a: &[u64]) -> bool {
     a.iter().all(|&x| x == 0)
 }
 
+/// Whether `x` represents the value one (`x[0] == 1` and every higher
+/// limb zero), mirroring the reference's `bool mp_is_one(const digit_t
+/// *x, unsigned int nwords)`. No quirk; all 1210 vectors equal
+/// `x[0] == 1 && x[1..] all zero`. The reference dereferences `x[0]`
+/// unconditionally (undefined for `nwords == 0`); the port requires a
+/// non-empty slice, that being the reference's implicit `nwords >= 1`
+/// contract.
+///
+/// # Panics
+/// If `x` is empty.
+pub fn mp_is_one(x: &[u64]) -> bool {
+    assert!(!x.is_empty(), "mp_is_one: nwords must be >= 1");
+    x[0] == 1 && x[1..].iter().all(|&v| v == 0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -467,6 +484,17 @@ mod tests {
         let mut c = [0u64; 2];
         mp_add(&mut c, &[u64::MAX, u64::MAX], &[1, 0]);
         assert_eq!(c, [0, 0]);
+    }
+
+    #[test]
+    fn is_one_iff_canonical_one() {
+        assert!(mp_is_one(&[1]));
+        assert!(mp_is_one(&[1, 0, 0]));
+        assert!(!mp_is_one(&[0, 0, 0]));
+        assert!(!mp_is_one(&[2, 0]));
+        assert!(!mp_is_one(&[1, 1]));
+        assert!(!mp_is_one(&[1, 0, 0x8000_0000_0000_0000]));
+        assert!(!mp_is_one(&[u64::MAX]));
     }
 
     #[test]

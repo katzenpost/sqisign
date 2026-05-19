@@ -79,6 +79,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "mp_is_one"
+path = "fuzz_targets/mp_is_one.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "mp_shiftl"
 path = "fuzz_targets/mp_shiftl.rs"
 test = false
