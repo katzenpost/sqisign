@@ -20,6 +20,11 @@
 //! - [`mp_shiftr`] is `mp_shiftr(x, shift, nwords)`: in-place logical
 //!   right shift by `1..=63` bits, returning the original `x[0] & 1`
 //!   (the low bit *before* shifting), as the reference does.
+//! - [`multiple_mp_shiftl`] is `multiple_mp_shiftl(x, shift, nwords)`:
+//!   left shift by an *arbitrary* amount `>= 1` (the reference loops
+//!   `mp_shiftl` by `RADIX-1`), i.e. `x <- (x << shift) mod 2^(64n)`
+//!   for any `shift`, including amounts past the full bit width
+//!   (result `0`).
 //!
 //! Correctness is established as for the whole port: every committed
 //! C-derived vector is replayed and bit-compared (`tests/`). Equivalence
@@ -139,6 +144,32 @@ pub fn mp_shiftr(x: &mut [u64], shift: u32) -> u64 {
     bit_out
 }
 
+/// In-place left shift by an arbitrary amount `shift >= 1`, equal to
+/// `x = (x << shift) mod 2^(64*n)` for any `shift` (including amounts at
+/// or beyond the full bit width, which leave `x` all zero).
+///
+/// Mirrors the reference's `multiple_mp_shiftl`, which composes
+/// [`mp_shiftl`] in steps of `RADIX-1` (63) bits then a final step of the
+/// remainder. The decomposition keeps every individual `mp_shiftl` within
+/// its defined `1..=63` domain (for `shift >= 1` the remainder is always
+/// in `1..=63`, never `0`), so the reference is well-defined for all
+/// `shift >= 1`; the port reproduces that exactly. `shift == 0` is the
+/// reference's one undefined input (it would call `mp_shiftl(x, 0)`); the
+/// port rejects it rather than reproduce the C undefined behaviour.
+///
+/// # Panics
+/// If `shift == 0`, or if `x` is empty.
+pub fn multiple_mp_shiftl(x: &mut [u64], shift: u32) {
+    assert!(shift >= 1, "multiple_mp_shiftl: shift must be >= 1");
+    assert!(!x.is_empty(), "multiple_mp_shiftl: nwords must be >= 1");
+    let mut t = shift;
+    while t > 63 {
+        mp_shiftl(x, 63);
+        t -= 63;
+    }
+    mp_shiftl(x, t); // t is now in 1..=63
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -216,6 +247,24 @@ mod tests {
         mp_shiftl(&mut x, 7);
         assert_eq!(x[0], orig[0] & !0x7f);
         assert_eq!(x[1], orig[1]);
+    }
+
+    #[test]
+    fn multiple_shiftl_matches_single_in_domain_and_clears_past_width() {
+        // For shift in 1..=63 it equals mp_shiftl.
+        let mut a = [0x0123_4567_89ab_cdefu64, 0xfedc_ba98_7654_3210u64];
+        let mut b = a;
+        multiple_mp_shiftl(&mut a, 50);
+        mp_shiftl(&mut b, 50);
+        assert_eq!(a, b);
+        // A shift at or beyond the full bit width zeroes the value.
+        let mut c = [0xffff_ffff_ffff_ffffu64, 0x1];
+        multiple_mp_shiftl(&mut c, 128);
+        assert_eq!(c, [0, 0]);
+        // A cross-RADIX shift: [1] << 64 in two limbs = [0, 1].
+        let mut d = [1u64, 0];
+        multiple_mp_shiftl(&mut d, 64);
+        assert_eq!(d, [0, 1]);
     }
 
     #[test]

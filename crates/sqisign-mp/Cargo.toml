@@ -33,3 +33,7 @@ harness = false
 [[bench]]
 name = "mp_shiftr"
 harness = false
+
+[[bench]]
+name = "multiple_mp_shiftl"
+harness = false

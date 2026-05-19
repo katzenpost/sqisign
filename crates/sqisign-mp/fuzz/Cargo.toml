@@ -42,3 +42,10 @@ path = "fuzz_targets/mp_shiftr.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "multiple_mp_shiftl"
+path = "fuzz_targets/multiple_mp_shiftl.rs"
+test = false
+doc = false
+bench = false
