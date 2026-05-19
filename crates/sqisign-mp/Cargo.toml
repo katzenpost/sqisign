@@ -39,6 +39,10 @@ name = "mp_mod_2exp"
 harness = false
 
 [[bench]]
+name = "mp_neg"
+harness = false
+
+[[bench]]
 name = "mp_shiftl"
 harness = false
 

@@ -40,6 +40,10 @@
 //! - [`mp_mod_2exp`] is `mp_mod_2exp(a, e, nwords)`: in-place
 //!   `a = a mod 2^e` (limb mask plus zero-fill, no-op when `e` covers
 //!   the full width). Correct; 1231 vectors all satisfy `a mod 2^e`.
+//! - [`mp_neg`] is `mp_neg(a, nwords)`. **Third faithful reproduction**:
+//!   the reference adds the two's-complement `+1` to limb 0 only with no
+//!   carry propagation, so it equals `-a` iff `a[0] != 0`. 1042 vectors,
+//!   339 exhibiting the `a[0] == 0` quirk. See its documentation.
 //!
 //! Correctness is established as for the whole port: every committed
 //! C-derived vector is replayed and bit-compared (`tests/`). Equivalence
@@ -352,6 +356,42 @@ pub fn mp_mod_2exp(a: &mut [u64], e: u32) {
     }
 }
 
+/// In-place negation, mirroring the reference's `void mp_neg(digit_t *a,
+/// unsigned int nwords)`.
+///
+/// # Faithful reproduction of a missing carry
+///
+/// True two's-complement negation is `~a + 1` with the `+ 1` carried
+/// through all limbs. The reference complements every limb and then adds
+/// `1` to **limb 0 only, with no carry propagation**:
+///
+/// ```c
+/// for (i = 0; i < nwords; i++) a[i] ^= -1;
+/// a[0] += 1;
+/// ```
+///
+/// So it equals `(-a) mod 2^(64n)` exactly when `a[0] != 0` (then
+/// `~a[0] != MAX`, the `+1` does not overflow, and there is no carry to
+/// lose). When `a[0] == 0`, `~a[0] == MAX`, the `+1` wraps limb 0 to `0`
+/// and the carry that true negation would propagate is dropped, so the
+/// result differs from `-a` (e.g. `mp_neg([0,0]) == [0, MAX]`, not
+/// `[0,0]`). All 1042 committed vectors match this exactly; 339 of them
+/// exhibit the `a[0] == 0` quirk.
+///
+/// Per the plan the C reference is the oracle and divergence is never
+/// silently introduced; this is a structural transcription, so the
+/// missing carry arises from the same code. `mp_neg` has no callers in
+/// the reference; flagged for sir alongside the `mp_mul`/`mp_mul2`
+/// findings.
+pub fn mp_neg(a: &mut [u64]) {
+    for limb in a.iter_mut() {
+        *limb = !*limb;
+    }
+    if let Some(lo) = a.first_mut() {
+        *lo = lo.wrapping_add(1); // limb 0 only; no carry, exactly as C
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -371,6 +411,29 @@ mod tests {
         let mut c = [0u64; 2];
         mp_add(&mut c, &[u64::MAX, u64::MAX], &[1, 0]);
         assert_eq!(c, [0, 0]);
+    }
+
+    #[test]
+    fn neg_is_true_negation_iff_low_limb_nonzero() {
+        // a[0] != 0: exact two's-complement negation.
+        let mut a = [5u64, 0];
+        mp_neg(&mut a);
+        // -(5) mod 2^128 = 2^128 - 5 = [MAX-4, MAX]
+        assert_eq!(a, [u64::MAX - 4, u64::MAX]);
+        // a[0] == 0: the dropped carry quirk. ~[0,0]=[MAX,MAX];
+        // limb0 +1 wraps to 0, NO carry -> [0, MAX], not [0,0].
+        let mut a = [0u64, 0];
+        mp_neg(&mut a);
+        assert_eq!(a, [0, u64::MAX]);
+        // a[0] == 0, high nonzero: [0, 7] -> ~ = [MAX, MAX-7];
+        // limb0 +1 -> 0 (no carry) -> [0, MAX-7].
+        let mut a = [0u64, 7];
+        mp_neg(&mut a);
+        assert_eq!(a, [0, u64::MAX - 7]);
+        // Single limb with a[0] != 0 is ordinary wrapping negation.
+        let mut a = [12345u64];
+        mp_neg(&mut a);
+        assert_eq!(a, [0u64.wrapping_sub(12345)]);
     }
 
     #[test]
