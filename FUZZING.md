@@ -16,6 +16,7 @@ toolchain.
 |---|---|---|---|
 | `sqisign-common` | `shake256` | determinism, XOF prefix stability | link `fips202.c` for byte-equality vs C |
 | `sqisign-common` | `shake128` | determinism, XOF prefix stability, distinct from SHAKE256 | link `fips202.c` for byte-equality vs C |
+| `sqisign-common` | `shake_inc` | incremental == one-shot for arbitrary absorb/squeeze chunking, both rates | link `fips202.c` for byte-equality vs C |
 
 ## Running (on a host with the toolchain)
 

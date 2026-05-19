@@ -57,6 +57,82 @@ pub fn shake128_vec(input: &[u8], out_len: usize) -> Vec<u8> {
     out
 }
 
+/// Incremental SHAKE256, mirroring the reference's
+/// `shake256_inc_init` / `_absorb` / `_finalize` / `_squeeze` contract:
+/// construct, [`absorb`](Shake256Absorb::absorb) any number of times,
+/// [`finalize`](Shake256Absorb::finalize) once, then
+/// [`squeeze`](Shake256Squeeze::squeeze) any number of times. The type
+/// system enforces the one-way absorb -> squeeze transition the C API only
+/// documents in a comment.
+#[derive(Clone, Default)]
+pub struct Shake256Absorb(sha3::Shake256);
+
+/// The squeeze phase of an incremental SHAKE256, after finalize.
+#[derive(Clone)]
+pub struct Shake256Squeeze(sha3::Shake256Reader);
+
+impl Shake256Absorb {
+    /// A fresh sponge, equivalent to `shake256_inc_init`.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Absorb more input, equivalent to one `shake256_inc_absorb` call.
+    /// Calling it `k` times with chunks whose concatenation is `m` is
+    /// indistinguishable from one call with `m`.
+    pub fn absorb(&mut self, input: &[u8]) {
+        self.0.update(input);
+    }
+
+    /// Finalize for squeezing, equivalent to `shake256_inc_finalize`.
+    pub fn finalize(self) -> Shake256Squeeze {
+        Shake256Squeeze(self.0.finalize_xof())
+    }
+}
+
+impl Shake256Squeeze {
+    /// Squeeze `out.len()` more bytes, equivalent to one
+    /// `shake256_inc_squeeze`. The byte stream is continuous across calls,
+    /// so chunking the squeeze does not change the output.
+    pub fn squeeze(&mut self, out: &mut [u8]) {
+        self.0.read(out);
+    }
+}
+
+/// Incremental SHAKE128. Identical contract to [`Shake256Absorb`], differing
+/// only in Keccak rate (168 bytes).
+#[derive(Clone, Default)]
+pub struct Shake128Absorb(sha3::Shake128);
+
+/// The squeeze phase of an incremental SHAKE128, after finalize.
+#[derive(Clone)]
+pub struct Shake128Squeeze(sha3::Shake128Reader);
+
+impl Shake128Absorb {
+    /// A fresh sponge, equivalent to `shake128_inc_init`.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Absorb more input, equivalent to one `shake128_inc_absorb` call.
+    pub fn absorb(&mut self, input: &[u8]) {
+        self.0.update(input);
+    }
+
+    /// Finalize for squeezing, equivalent to `shake128_inc_finalize`.
+    pub fn finalize(self) -> Shake128Squeeze {
+        Shake128Squeeze(self.0.finalize_xof())
+    }
+}
+
+impl Shake128Squeeze {
+    /// Squeeze `out.len()` more bytes, equivalent to one
+    /// `shake128_inc_squeeze`.
+    pub fn squeeze(&mut self, out: &mut [u8]) {
+        self.0.read(out);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -82,6 +158,32 @@ mod tests {
             hex::encode(got),
             "7f9c2ba4e88f827d616045507605853ed73b8093f6efbc88eb1a6eacfa66ef26"
         );
+    }
+
+    // Chunked absorb then chunked squeeze must reproduce the one-shot
+    // result exactly; anchored to the same FIPS-202 empty-input answers.
+    #[test]
+    fn incremental_chunking_matches_one_shot() {
+        let mut a = Shake256Absorb::new();
+        a.absorb(b"");
+        a.absorb(b"");
+        let mut sq = a.finalize();
+        let mut out = [0u8; 32];
+        sq.squeeze(&mut out[..1]);
+        sq.squeeze(&mut out[1..32]);
+        assert_eq!(
+            hex::encode(out),
+            "46b9dd2b0ba88d13233b3feb743eeb243fcd52ea62b81b82b50c27646ed5762f"
+        );
+
+        let mut a = Shake128Absorb::new();
+        a.absorb(b"katzen");
+        a.absorb(b"post");
+        let mut sq = a.finalize();
+        let mut inc = [0u8; 100];
+        sq.squeeze(&mut inc[..7]);
+        sq.squeeze(&mut inc[7..]);
+        assert_eq!(inc.to_vec(), shake128_vec(b"katzenpost", 100));
     }
 
     #[test]

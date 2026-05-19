@@ -10,17 +10,23 @@
 //! - [`hash::shake128`] is the one-shot SHAKE128 XOF boundary
 //!   (`sqisign_common::shake128`), the reference's
 //!   `shake128(out, outlen, in, inlen)` in the same translation unit.
+//! - [`hash::Shake256Absorb`] / [`hash::Shake128Absorb`] are the
+//!   incremental absorb/finalize/squeeze API
+//!   (`sqisign_common::shake256_inc`, `..::shake128_inc`), mirroring the
+//!   reference's `shake*_inc_init/_absorb/_finalize/_squeeze`.
 //!
-//! Not yet ported (later units within Phase 1 `common`): the incremental
-//! absorb/squeeze API, SHA3-256/384/512, seed expansion, the CTR-DRBG
-//! (`randombytes`), and the memory-zeroing utilities.
+//! Not yet ported (later units within Phase 1 `common`): SHA3-256/384/512,
+//! seed expansion, the CTR-DRBG (`randombytes`), and the memory-zeroing
+//! utilities.
 //!
 //! Correctness is established the way the whole port is: every committed
-//! C-derived vector is replayed against this code (see
-//! `tests/shake256_vectors.rs` and `tests/shake128_vectors.rs`).
-//! Equivalence to the reference is proven, not presumed.
+//! C-derived vector is replayed against this code (see the per-boundary
+//! tests under `tests/`). Equivalence to the reference is proven, not
+//! presumed.
 #![forbid(unsafe_code)]
 
 pub mod hash;
 
-pub use hash::{shake128, shake256};
+pub use hash::{
+    shake128, shake256, Shake128Absorb, Shake128Squeeze, Shake256Absorb, Shake256Squeeze,
+};

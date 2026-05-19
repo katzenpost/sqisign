@@ -28,3 +28,10 @@ path = "fuzz_targets/shake128.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "shake_inc"
+path = "fuzz_targets/shake_inc.rs"
+test = false
+doc = false
+bench = false

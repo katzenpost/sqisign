@@ -27,3 +27,7 @@ harness = false
 [[bench]]
 name = "shake128"
 harness = false
+
+[[bench]]
+name = "shake_inc"
+harness = false
