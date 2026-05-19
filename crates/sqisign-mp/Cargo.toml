@@ -51,6 +51,10 @@ name = "mp_compare"
 harness = false
 
 [[bench]]
+name = "mp_is_zero"
+harness = false
+
+[[bench]]
 name = "mp_shiftl"
 harness = false
 
