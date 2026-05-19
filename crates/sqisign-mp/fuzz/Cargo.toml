@@ -126,3 +126,10 @@ path = "fuzz_targets/multiple_mp_shiftl.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "mp_invert_matrix"
+path = "fuzz_targets/mp_invert_matrix.rs"
+test = false
+doc = false
+bench = false

@@ -57,6 +57,11 @@
 //! - [`mp_inv_2e`] is `mp_inv_2e(b, a, e, nwords)`: Newton/Hensel
 //!   modular inverse mod `2^w` (w from e). A faithful composition of
 //!   the proven primitives; 1180 vectors, all `a*b == 1 mod 2^e`.
+//! - [`mp_invert_matrix`] is `mp_invert_matrix(r1, r2, s1, s2, e,
+//!   nwords)`: in-place 2x2 inverse over `Z/2^e`. A faithful
+//!   composition that **inherits the `mp_neg` no-carry defect** (24 of
+//!   1180 vectors are not true inverses); reproduced per the oracle
+//!   rule, pinned by count. The last `mp` boundary.
 //! - [`mp_neg`] is `mp_neg(a, nwords)`. **Third faithful reproduction**:
 //!   the reference adds the two's-complement `+1` to limb 0 only with no
 //!   carry propagation, so it equals `-a` iff `a[0] != 0`. 1042 vectors,
@@ -603,6 +608,84 @@ pub fn mp_inv_2e(b: &mut [u64], a: &[u64], e: i32) {
     }
 }
 
+/// In-place inverse of the 2x2 matrix `((r1, r2), (s1, s2))` over
+/// `Z/2^e`, mirroring the reference's `void mp_invert_matrix(digit_t
+/// *r1, digit_t *r2, digit_t *s1, digit_t *s2, int e, unsigned int
+/// nwords)`. With determinant `D = r1*s2 - r2*s1` and `g = D^{-1}`, the
+/// result is `g * ((s2, -r2), (-s1, r1))`, reduced mod `2^w`
+/// (`w = 1 << p`, `p` the smallest with `2^p >= e`).
+///
+/// # Inherited `mp_neg` defect
+///
+/// This is a pure structural transcription composing the vector-proven
+/// [`mp_mul`], [`mp_sub`], [`mp_inv_2e`], [`mp_neg`] and [`mp_mod_2exp`].
+/// It therefore **inherits the `mp_neg` no-carry defect**: the two
+/// negations (`-r2`, `-s1`, computed as `mp_neg(D*r2)` / `mp_neg(D*s1)`)
+/// drop the two's-complement carry when their low limb is zero, so for a
+/// small fraction of inputs (24 of the 1180 committed vectors) the
+/// result is *not* a true inverse (`M * result != I`). The reference has
+/// no self-verification here and emits the same wrong matrix; the port
+/// reproduces it bit-for-bit by construction. The combined upstream PR's
+/// `mp_neg` carry fix (`~/sqisign-mp-defects.*`) also corrects this.
+/// `mp_inv_2e` requires the determinant odd (invertible matrix); the
+/// reference assumes this and so does the port.
+///
+/// # Panics
+/// If the four slices do not share one length, or the determinant is
+/// even (a non-invertible matrix, via the `mp_inv_2e` precondition).
+pub fn mp_invert_matrix(r1: &mut [u64], r2: &mut [u64], s1: &mut [u64], s2: &mut [u64], e: i32) {
+    let n = r1.len();
+    assert!(
+        r2.len() == n && s1.len() == n && s2.len() == n,
+        "mp_invert_matrix: all four arrays must share one nwords"
+    );
+
+    let mut p: i32 = 1;
+    while (1i64 << p) < e as i64 {
+        p += 1;
+    }
+    let w: u32 = 1u32 << p;
+
+    // Snapshot the inputs: the reference reads all four throughout and
+    // only writes them via the final copies.
+    let a = r1.to_vec();
+    let b = r2.to_vec();
+    let c = s1.to_vec();
+    let d = s2.to_vec();
+
+    // det = r1*s2 - r2*s1, then det <- det^{-1} mod 2^w.
+    let mut t = vec![0u64; n];
+    mp_mul(&mut t, &a, &d);
+    let mut det = vec![0u64; n];
+    mp_mul(&mut det, &b, &c);
+    let mut det_sub = vec![0u64; n];
+    mp_sub(&mut det_sub, &t, &det);
+    let mut g = vec![0u64; n];
+    mp_inv_2e(&mut g, &det_sub, e);
+
+    let mut resa = vec![0u64; n];
+    let mut resb = vec![0u64; n];
+    let mut resc = vec![0u64; n];
+    let mut resd = vec![0u64; n];
+    mp_mul(&mut resa, &g, &d); // g * s2
+    mp_mul(&mut resb, &g, &b); // g * r2
+    mp_mul(&mut resc, &g, &c); // g * s1
+    mp_mul(&mut resd, &g, &a); // g * r1
+
+    mp_neg(&mut resb);
+    mp_neg(&mut resc);
+
+    mp_mod_2exp(&mut resa, w);
+    mp_mod_2exp(&mut resb, w);
+    mp_mod_2exp(&mut resc, w);
+    mp_mod_2exp(&mut resd, w);
+
+    r1.copy_from_slice(&resa);
+    r2.copy_from_slice(&resb);
+    s1.copy_from_slice(&resc);
+    s2.copy_from_slice(&resd);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -622,6 +705,26 @@ mod tests {
         let mut c = [0u64; 2];
         mp_add(&mut c, &[u64::MAX, u64::MAX], &[1, 0]);
         assert_eq!(c, [0, 0]);
+    }
+
+    #[test]
+    fn invert_matrix_inverts_a_simple_matrix() {
+        // M = ((1,0),(0,1)) inverts to itself (det = 1, odd).
+        let (mut r1, mut r2, mut s1, mut s2) = ([1u64, 0], [0u64, 0], [0u64, 0], [1u64, 0]);
+        mp_invert_matrix(&mut r1, &mut r2, &mut s1, &mut s2, 64);
+        assert_eq!((r1, r2, s1, s2), ([1, 0], [0, 0], [0, 0], [1, 0]));
+        // M = ((1,0),(0,3)): det = 3, inverse = ((1,0),(0,3^{-1})).
+        // M * Minv == I mod 2^e. Check the product directly.
+        let (mut r1, mut r2, mut s1, mut s2) = ([1u64, 0], [0u64, 0], [0u64, 0], [3u64, 0]);
+        let (a, b, c, d) = (1u128, 0u128, 0u128, 3u128);
+        mp_invert_matrix(&mut r1, &mut r2, &mut s1, &mut s2, 64);
+        let big = |w: &[u64]| (w[0] as u128) | ((w[1] as u128) << 64);
+        let (mr1, mr2, ms1, ms2) = (big(&r1), big(&r2), big(&s1), big(&s2));
+        let m = 1u128 << 64;
+        assert_eq!((a * mr1 + b * ms1) % m, 1);
+        assert_eq!((a * mr2 + b * ms2) % m, 0);
+        assert_eq!((c * mr1 + d * ms1) % m, 0);
+        assert_eq!((c * mr2 + d * ms2) % m, 1);
     }
 
     #[test]

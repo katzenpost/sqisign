@@ -81,3 +81,7 @@ harness = false
 [[bench]]
 name = "multiple_mp_shiftl"
 harness = false
+
+[[bench]]
+name = "mp_invert_matrix"
+harness = false
