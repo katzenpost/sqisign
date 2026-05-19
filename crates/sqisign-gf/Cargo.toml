@@ -6,12 +6,18 @@ rust-version.workspace = true
 license.workspace = true
 description = "SQIsign GF(p) and GF(p^2) arithmetic, the performance-critical layer. Mirrors vendor/the-sqisign/src/gf."
 
+# No dependencies. The level-1 generic field is a self-contained
+# monty.py-generated word-array core (spint = uint64_t, Nlimbs 5,
+# Radix 51); the Rust port reimplements it directly and carries no numeric
+# dependency, exactly as sqisign-mp does for the mp word-array core.
 [dependencies]
-sqisign-common.workspace = true
-sqisign-mp.workspace = true
 
 [dev-dependencies]
 sqisign-vectors.workspace = true
 hex.workspace = true
 proptest.workspace = true
 criterion.workspace = true
+
+[[bench]]
+name = "fp_add"
+harness = false
