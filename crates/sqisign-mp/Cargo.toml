@@ -31,6 +31,10 @@ name = "mp_mul"
 harness = false
 
 [[bench]]
+name = "mp_mul2"
+harness = false
+
+[[bench]]
 name = "mp_shiftl"
 harness = false
 

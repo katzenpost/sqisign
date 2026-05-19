@@ -33,6 +33,10 @@
 //!   plan the C reference is the oracle and divergence is never silently
 //!   introduced. Upstream is being notified by a separate correction PR.
 //!   See [`mp_mul`]'s own documentation.
+//! - [`mp_mul2`] is `mp_mul2(c, a, b)`, the fixed two-digit multiply.
+//!   **Another faithful reproduction**: the reference omits the `a1*b0`
+//!   cross term, computing `a*b - (a1*b0)*2^64` rather than the full
+//!   product. All 2296 vectors pin that identity. See its documentation.
 //!
 //! Correctness is established as for the whole port: every committed
 //! C-derived vector is replayed and bit-compared (`tests/`). Equivalence
@@ -263,6 +267,67 @@ pub fn mp_mul(c: &mut [u64], a: &[u64], b: &[u64]) {
     c.copy_from_slice(&cc);
 }
 
+/// Fixed two-digit operand multiply: `a[0..2] * b[0..2]` into `c[0..4]`,
+/// mirroring the reference's `void mp_mul2(digit_t *c, const digit_t *a,
+/// const digit_t *b)`.
+///
+/// # Faithful reproduction of a partial-product reference
+///
+/// Despite the "multiplication" name and four-digit output, the reference
+/// is **not** the full 2x2 product: its body forms `a0*b0`, `a0*b1` and
+/// `a1*b1` but never the `a1*b0` cross term, so it computes
+/// `c = a*b - (a1*b0) * 2^64`. Every one of the 2296 committed C-derived
+/// vectors satisfies exactly that identity (and the 396 that also equal
+/// the true product are precisely those with `a1 == 0` or `b0 == 0`).
+///
+/// Whether that omission is intentional specialisation or a defect is not
+/// for this port to adjudicate: per the plan the C reference is the
+/// oracle and divergence is never silently introduced. The port is a
+/// structural transcription of the reference's `MUL`/`ADDC` sequence, so
+/// the omission arises from the same code, and all vectors pass
+/// bit-for-bit. (`mp_mul2`'s callers and status are noted for sir; a
+/// separate upstream question may follow.)
+///
+/// # Panics
+/// If `a` or `b` is not length 2, or `c` is not length 4.
+pub fn mp_mul2(c: &mut [u64], a: &[u64], b: &[u64]) {
+    assert!(
+        a.len() == 2 && b.len() == 2 && c.len() == 4,
+        "mp_mul2: a, b must be 2 limbs and c must be 4 (fixed shape)"
+    );
+
+    // 64x64 -> 128 split, the reference's MUL.
+    fn mul(x: u64, y: u64) -> (u64, u64) {
+        let p = (x as u128) * (y as u128);
+        (p as u64, (p >> 64) as u64)
+    }
+    // Exactly the reference's ADDC macro: tempReg = addend1 + carryIn;
+    // sumOut = addend2 + tempReg; carryOut = (tempReg < carryIn) |
+    // (sumOut < tempReg).
+    fn addc(addend1: u64, addend2: u64, cin: u64) -> (u64, u64) {
+        let temp = addend1.wrapping_add(cin);
+        let sum = addend2.wrapping_add(temp);
+        let cout = ((temp < cin) as u64) | ((sum < temp) as u64);
+        (sum, cout)
+    }
+
+    let (t0_0, t0_1) = mul(a[0], b[0]); // MUL(t0, a[0], b[0])
+    let (t1_0, t1_1) = mul(a[0], b[1]); // MUL(t1, a[0], b[1])
+
+    let (t0_1, carry) = addc(t0_1, t1_0, 0); // ADDC(t0[1],c,t0[1],t1[0],c)
+    let (t1_1, carry) = addc(0, t1_1, carry); // ADDC(t1[1],c,0,t1[1],c)
+
+    let (t2_0, t2_1) = mul(a[1], b[1]); // MUL(t2, a[1], b[1])
+
+    let (t2_0, carry) = addc(t2_0, t1_1, carry); // ADDC(t2[0],c,t2[0],t1[1],c)
+    let (t2_1, _carry) = addc(0, t2_1, carry); // ADDC(t2[1],c,0,t2[1],c)
+
+    c[0] = t0_0;
+    c[1] = t0_1;
+    c[2] = t2_0;
+    c[3] = t2_1;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -282,6 +347,66 @@ mod tests {
         let mut c = [0u64; 2];
         mp_add(&mut c, &[u64::MAX, u64::MAX], &[1, 0]);
         assert_eq!(c, [0, 0]);
+    }
+
+    #[test]
+    fn mul2_omits_a1_b0_cross_term() {
+        // The reference computes a*b - (a1*b0)*2^64, dropping that one
+        // cross term. Verify against an explicit u256 product minus it.
+        let a = [3u64, 5u64];
+        let b = [7u64, 11u64];
+        let mut c = [0u64; 4];
+        mp_mul2(&mut c, &a, &b);
+        let mut expect = mul_u256(&a, &b);
+        sub_at_limb(&mut expect, 1, (a[1] as u128) * (b[0] as u128));
+        assert_eq!(c, expect, "mp_mul2 must equal a*b - a1*b0*2^64");
+    }
+
+    // Helpers for the 4-limb (256-bit) reference arithmetic in tests.
+    fn mul_u256(a: &[u64; 2], b: &[u64; 2]) -> [u64; 4] {
+        let mut r = [0u128; 5];
+        for (i, &ai) in a.iter().enumerate() {
+            for (j, &bj) in b.iter().enumerate() {
+                let p = (ai as u128) * (bj as u128);
+                r[i + j] += p & 0xffff_ffff_ffff_ffff;
+                r[i + j + 1] += p >> 64;
+            }
+        }
+        let mut out = [0u64; 4];
+        let mut carry = 0u128;
+        for k in 0..4 {
+            let v = r[k] + carry;
+            out[k] = v as u64;
+            carry = v >> 64;
+        }
+        out
+    }
+    fn sub_at_limb(x: &mut [u64; 4], limb: usize, mut amount: u128) {
+        let mut k = limb;
+        while amount != 0 && k < 4 {
+            let cur = x[k] as u128;
+            let sub = amount & 0xffff_ffff_ffff_ffff;
+            if cur >= sub {
+                x[k] = (cur - sub) as u64;
+                amount >>= 64;
+            } else {
+                x[k] = (cur + (1u128 << 64) - sub) as u64;
+                amount = (amount >> 64) + 1; // borrow
+            }
+            k += 1;
+        }
+    }
+
+    #[test]
+    fn mul2_equals_full_product_when_a1_or_b0_zero() {
+        // a1 == 0: a1*b0 == 0, so the omission vanishes -> full product.
+        let mut c = [0u64; 4];
+        mp_mul2(&mut c, &[0x1234_5678, 0], &[0x9abc_def0, 0x11]);
+        assert_eq!(c, mul_u256(&[0x1234_5678, 0], &[0x9abc_def0, 0x11]));
+        // b0 == 0 likewise.
+        let mut c = [0u64; 4];
+        mp_mul2(&mut c, &[7, 9], &[0, 13]);
+        assert_eq!(c, mul_u256(&[7, 9], &[0, 13]));
     }
 
     #[test]
