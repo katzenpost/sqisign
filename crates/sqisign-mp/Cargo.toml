@@ -25,3 +25,7 @@ harness = false
 [[bench]]
 name = "mp_sub"
 harness = false
+
+[[bench]]
+name = "mp_shiftl"
+harness = false

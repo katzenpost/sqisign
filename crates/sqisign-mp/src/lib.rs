@@ -14,6 +14,9 @@
 //!   addition, the final carry discarded exactly as the reference does.
 //! - [`mp_sub`] is `mp_sub(c, a, b, nwords)`: the borrow counterpart, the
 //!   final borrow discarded (so `a < b` wraps mod `2^(64n)`, as in C).
+//! - [`mp_shiftl`] is `mp_shiftl(x, shift, nwords)`: in-place left shift
+//!   by `1..=63` bits, truncated to `nwords` (`x <- (x << shift) mod
+//!   2^(64n)`), exactly as the reference's bit-spill loop.
 //!
 //! Correctness is established as for the whole port: every committed
 //! C-derived vector is replayed and bit-compared (`tests/`). Equivalence
@@ -79,6 +82,32 @@ pub fn mp_sub(c: &mut [u64], a: &[u64], b: &[u64]) {
     }
 }
 
+/// In-place multiprecision left shift, `x = (x << shift) mod 2^(64*n)`,
+/// where `n = x.len()` and `shift` is in `1..=63`.
+///
+/// Mirrors the reference's `void mp_shiftl(digit_t *x, unsigned int
+/// shift, unsigned int nwords)`: each limb takes the low `shift` bits
+/// spilled out of the limb below, the top of the most-significant limb is
+/// discarded (no growth). The reference is only defined for
+/// `1 <= shift <= RADIX-1` (`shift = 0` or `>= 64` is a shift-by-width,
+/// undefined in C); this port documents and checks that domain rather
+/// than silently producing a platform-dependent value.
+///
+/// # Panics
+/// If `shift` is `0` or `>= 64` (outside the reference's defined domain),
+/// or if `x` is empty.
+pub fn mp_shiftl(x: &mut [u64], shift: u32) {
+    assert!(
+        (1..=63).contains(&shift),
+        "mp_shiftl: shift must be in 1..=63 (the reference's domain)"
+    );
+    assert!(!x.is_empty(), "mp_shiftl: nwords must be >= 1");
+    for i in (1..x.len()).rev() {
+        x[i] = (x[i] << shift) ^ (x[i - 1] >> (64 - shift));
+    }
+    x[0] <<= shift;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -110,6 +139,27 @@ mod tests {
         let mut c = [0u64; 2];
         mp_sub(&mut c, &[0, 0], &[1, 0]);
         assert_eq!(c, [u64::MAX, u64::MAX]);
+    }
+
+    #[test]
+    fn shiftl_spills_across_limbs_and_truncates() {
+        // [0x8000_0000_0000_0000, 0] << 1 = [0, 1] (top bit spills up).
+        let mut x = [0x8000_0000_0000_0000u64, 0];
+        mp_shiftl(&mut x, 1);
+        assert_eq!(x, [0, 1]);
+        // Single limb: top bit shifted out is discarded (truncation).
+        let mut y = [0x8000_0000_0000_0000u64];
+        mp_shiftl(&mut y, 1);
+        assert_eq!(y, [0]);
+    }
+
+    #[test]
+    fn shiftl_is_multiply_by_pow2_mod() {
+        let mut x = [0x0123_4567_89ab_cdefu64, 0xfedc_ba98_7654_3210u64];
+        let val = (x[0] as u128) | ((x[1] as u128) << 64);
+        mp_shiftl(&mut x, 5);
+        let got = (x[0] as u128) | ((x[1] as u128) << 64);
+        assert_eq!(got, val.wrapping_shl(5));
     }
 
     #[test]

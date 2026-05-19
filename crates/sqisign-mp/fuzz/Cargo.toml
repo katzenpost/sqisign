@@ -28,3 +28,10 @@ path = "fuzz_targets/mp_sub.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "mp_shiftl"
+path = "fuzz_targets/mp_shiftl.rs"
+test = false
+doc = false
+bench = false
