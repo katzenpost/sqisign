@@ -86,6 +86,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "select_ct"
+path = "fuzz_targets/select_ct.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "mp_shiftl"
 path = "fuzz_targets/mp_shiftl.rs"
 test = false

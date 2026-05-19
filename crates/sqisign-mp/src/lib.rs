@@ -48,6 +48,9 @@
 //!   No quirk; 1210 vectors.
 //! - [`mp_is_one`] is `mp_is_one(x, nwords)`: the "value is one"
 //!   predicate (`x[0]==1`, rest zero). No quirk; 1210 vectors.
+//! - [`select_ct`] is `select_ct(c, a, b, mask, nwords)`: branchless
+//!   bitwise select (`c = a` if `mask==0`, `c = b` if `mask==!0`). No
+//!   quirk; 1049 vectors == `((a^b)&mask)^a`.
 //! - [`mp_neg`] is `mp_neg(a, nwords)`. **Third faithful reproduction**:
 //!   the reference adds the two's-complement `+1` to limb 0 only with no
 //!   carry propagation, so it equals `-a` iff `a[0] != 0`. 1042 vectors,
@@ -465,6 +468,26 @@ pub fn mp_is_one(x: &[u64]) -> bool {
     x[0] == 1 && x[1..].iter().all(|&v| v == 0)
 }
 
+/// Branchless conditional select: `c[i] = ((a[i] ^ b[i]) & mask) ^ a[i]`,
+/// mirroring the reference's `void select_ct(digit_t *c, const digit_t
+/// *a, const digit_t *b, const digit_t mask, const int nwords)`. With
+/// `mask == 0` this is `c = a`; with `mask == !0`, `c = b`; the reference
+/// applies `mask` *bitwise*, so an arbitrary mask is a per-bit blend, and
+/// the 1049 vectors pin exactly that (not merely the 0 / all-ones cases
+/// the callers use). No quirk.
+///
+/// # Panics
+/// If `a`, `b` and `c` do not all share one length.
+pub fn select_ct(c: &mut [u64], a: &[u64], b: &[u64], mask: u64) {
+    assert!(
+        a.len() == b.len() && a.len() == c.len(),
+        "select_ct: a, b, c must share one limb count (nwords)"
+    );
+    for i in 0..a.len() {
+        c[i] = ((a[i] ^ b[i]) & mask) ^ a[i];
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -484,6 +507,21 @@ mod tests {
         let mut c = [0u64; 2];
         mp_add(&mut c, &[u64::MAX, u64::MAX], &[1, 0]);
         assert_eq!(c, [0, 0]);
+    }
+
+    #[test]
+    fn select_ct_picks_a_or_b_or_blends() {
+        let a = [0x1111_1111_1111_1111u64, 2];
+        let b = [0x2222_2222_2222_2222u64, 9];
+        let mut c = [0u64; 2];
+        select_ct(&mut c, &a, &b, 0);
+        assert_eq!(c, a, "mask 0 selects a");
+        select_ct(&mut c, &a, &b, u64::MAX);
+        assert_eq!(c, b, "mask all-ones selects b");
+        // Per-bit blend: low nibble from b, rest from a.
+        select_ct(&mut c, &a, &b, 0xf);
+        assert_eq!(c[0], (a[0] & !0xf) | (b[0] & 0xf));
+        assert_eq!(c[1], (a[1] & !0xf) | (b[1] & 0xf));
     }
 
     #[test]

@@ -59,6 +59,10 @@ name = "mp_is_one"
 harness = false
 
 [[bench]]
+name = "select_ct"
+harness = false
+
+[[bench]]
 name = "mp_shiftl"
 harness = false
 
