@@ -44,6 +44,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "mp_mod_2exp"
+path = "fuzz_targets/mp_mod_2exp.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "mp_shiftl"
 path = "fuzz_targets/mp_shiftl.rs"
 test = false

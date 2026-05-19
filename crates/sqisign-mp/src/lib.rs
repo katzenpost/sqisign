@@ -37,6 +37,9 @@
 //!   **Another faithful reproduction**: the reference omits the `a1*b0`
 //!   cross term, computing `a*b - (a1*b0)*2^64` rather than the full
 //!   product. All 2296 vectors pin that identity. See its documentation.
+//! - [`mp_mod_2exp`] is `mp_mod_2exp(a, e, nwords)`: in-place
+//!   `a = a mod 2^e` (limb mask plus zero-fill, no-op when `e` covers
+//!   the full width). Correct; 1231 vectors all satisfy `a mod 2^e`.
 //!
 //! Correctness is established as for the whole port: every committed
 //! C-derived vector is replayed and bit-compared (`tests/`). Equivalence
@@ -328,6 +331,27 @@ pub fn mp_mul2(c: &mut [u64], a: &[u64], b: &[u64]) {
     c[3] = t2_1;
 }
 
+/// In-place reduction modulo `2^e`: `a = a mod 2^e`, mirroring the
+/// reference's `void mp_mod_2exp(digit_t *a, unsigned int e, unsigned int
+/// nwords)`.
+///
+/// With `q = e / 64` and `r = e % 64`: if `q < a.len()` the limb at `q`
+/// is masked to its low `r` bits and every higher limb is zeroed; if
+/// `q >= a.len()` (i.e. `e` covers or exceeds the full width) it is a
+/// no-op, exactly as the reference. `r == 0` masks limb `q` to zero,
+/// which is correct for `e` a multiple of 64. No defect here: all 1231
+/// committed vectors satisfy `r == a mod 2^e`.
+pub fn mp_mod_2exp(a: &mut [u64], e: u32) {
+    let q = (e >> 6) as usize;
+    let r = e & 63;
+    if q < a.len() {
+        a[q] &= (1u64 << r) - 1; // r in 0..=63; r == 0 -> mask 0
+        for limb in a.iter_mut().skip(q + 1) {
+            *limb = 0;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,6 +371,29 @@ mod tests {
         let mut c = [0u64; 2];
         mp_add(&mut c, &[u64::MAX, u64::MAX], &[1, 0]);
         assert_eq!(c, [0, 0]);
+    }
+
+    #[test]
+    fn mod_2exp_masks_and_zero_fills() {
+        // e = 0: everything cleared.
+        let mut a = [u64::MAX, u64::MAX];
+        mp_mod_2exp(&mut a, 0);
+        assert_eq!(a, [0, 0]);
+        // e = 64: keep limb 0, zero the rest.
+        let mut a = [0xdead_beef_dead_beef, u64::MAX];
+        mp_mod_2exp(&mut a, 64);
+        assert_eq!(a, [0xdead_beef_dead_beef, 0]);
+        // e = 68: limb1 masked to low 4 bits, limb0 intact.
+        let mut a = [u64::MAX, u64::MAX, u64::MAX];
+        mp_mod_2exp(&mut a, 68);
+        assert_eq!(a, [u64::MAX, 0xf, 0]);
+        // e at/over the full width: no-op.
+        let mut a = [1u64, 2, 3];
+        mp_mod_2exp(&mut a, 192);
+        assert_eq!(a, [1, 2, 3]);
+        let mut a = [1u64, 2, 3];
+        mp_mod_2exp(&mut a, 9999);
+        assert_eq!(a, [1, 2, 3]);
     }
 
     #[test]
