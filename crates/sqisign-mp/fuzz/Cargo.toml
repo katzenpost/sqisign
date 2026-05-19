@@ -21,3 +21,10 @@ path = "fuzz_targets/mp_add.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "mp_sub"
+path = "fuzz_targets/mp_sub.rs"
+test = false
+doc = false
+bench = false
