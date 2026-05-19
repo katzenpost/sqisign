@@ -21,3 +21,7 @@ criterion.workspace = true
 [[bench]]
 name = "fp_add"
 harness = false
+
+[[bench]]
+name = "fp_sub"
+harness = false

@@ -31,6 +31,14 @@
 //!   arithmetic right shift of the running carry and its choice to leave
 //!   limb 4 unmasked. No upstream defect observed; every committed
 //!   C-derived vector replays bit-for-bit.
+//! - [`fp_sub`] is `fp_sub(out, a, b)`, the thin wrapper the reference
+//!   defines over `modsub`: modular subtraction reducing to *less than
+//!   2p* (not fully canonical). It reuses the same `prop` helper. Unlike
+//!   `modadd`, `modsub` does *not* pre-add `2p` before the first `prop`:
+//!   it subtracts limbwise, runs `prop` (whose all-ones `carry` mask
+//!   signals the difference went negative), and only then conditionally
+//!   adds `2p` back in the redundant form. No upstream defect observed;
+//!   every committed C-derived vector replays bit-for-bit.
 //!
 //! Correctness is established as for the whole port: every committed
 //! C-derived vector is replayed and bit-compared (`tests/`). Equivalence
@@ -160,4 +168,56 @@ fn modadd(a: &Fp, b: &Fp, n: &mut Fp) {
 /// never by raw-limb equality.
 pub fn fp_add(out: &mut Fp, a: &Fp, b: &Fp) {
     modadd(a, b, out);
+}
+
+/// Modular subtraction, reducing to less than `2p` (not fully canonical).
+///
+/// Mirrors the reference's
+/// `inline static void modsub(const spint *a, const spint *b, spint *n)`:
+///
+/// ```c
+/// n[i] = a[i] - b[i];           // i = 0..4
+/// carry = prop(n);
+/// n[0] -= 2u & carry;
+/// n[4] += 0xa00000000000u & carry;
+/// (void)prop(n);
+/// ```
+///
+/// The structural contrast with `modadd` is faithfully reproduced: where
+/// `modadd` *pre-adds* `2p` (`n[0] += 2`, `n[4] -= 2*p4`) before the first
+/// `prop`, `modsub` does no such pre-add. It subtracts limbwise, then runs
+/// `prop`; `prop`'s all-ones `carry` mask signals whether the difference
+/// went negative, in which case `2p` is masked in (`n[0] -= 2`,
+/// `n[4] += 2*p4`) and carries are propagated once more. The conditional
+/// `2p` correction tail is identical to `modadd`'s; only the missing
+/// pre-add distinguishes the two. As with `modadd`, the reference accepts
+/// arbitrary non-canonical limb inputs and the port reproduces its output
+/// on those too (the C-derived vectors include full-width 64-bit limb
+/// inputs and pin this).
+///
+/// Wrapping `u64` arithmetic throughout matches the reference's
+/// `spint == uint64_t` two's-complement wraparound (each `a[i] - b[i]`
+/// borrows by wrapping, exactly as the unsigned C subtraction does).
+fn modsub(a: &Fp, b: &Fp, n: &mut Fp) {
+    for i in 0..NWORDS_FIELD {
+        n[i] = a[i].wrapping_sub(b[i]);
+    }
+    let carry = prop(n);
+    n[0] = n[0].wrapping_sub(2 & carry);
+    n[4] = n[4].wrapping_add(TWO_P4 & carry);
+    let _ = prop(n);
+}
+
+/// GF(p) subtraction `out = a - b mod p`, in the redundant radix-2^51
+/// representation, reduced to less than `2p`.
+///
+/// Mirrors the reference's `void fp_sub(fp_t *out, const fp_t *a,
+/// const fp_t *b)`, which is the thin wrapper `modsub(*a, *b, *out)`.
+/// As with [`fp_add`], the output is *not* fully canonical: limbs 0..=3
+/// are below `2^51` (the `prop` mask) but limb 4 is left unmasked,
+/// exactly as the reference leaves it. Compare field elements with the
+/// reference's equality (`modcmp`, ported later), never by raw-limb
+/// equality.
+pub fn fp_sub(out: &mut Fp, a: &Fp, b: &Fp) {
+    modsub(a, b, out);
 }
