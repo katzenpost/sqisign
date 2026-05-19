@@ -211,6 +211,28 @@
 //!   independent value-level oracle for the halving operation. No
 //!   upstream defect observed; every committed C-derived vector replays
 //!   bit-for-bit.
+//! - [`fp_div3`] is `fp_div3(out, a)`, the direct analogue of
+//!   [`fp_half`] one slot over: the reference's
+//!   `modmul(THREE_INV, *a, *out);` (see `fp_p5248_64.c:658..662`),
+//!   multiplying by the precomputed Montgomery representative of
+//!   `3^-1 mod p`. The port is the same one-line `modmul` call site
+//!   substituting [`THREE_INV`] for [`TWO_INV`], with no new arithmetic
+//!   introduced. `THREE_INV` is the precomputed `extern const`-style
+//!   limb table from `fp_p5248_64.c:538..542`, transcribed bit-for-bit
+//!   into the internal constant alongside [`TWO_INV`]. The output is,
+//!   as for [`fp_mul`] and [`fp_half`], a redundant `[0, 2p)`
+//!   representative (limbs 0..=3 below `2^51`, limb 4 unmasked); compare
+//!   with [`fp_is_equal`] (the value-level equality), not raw-limb
+//!   equality. The empirical equivalence `fp_div3(a) == fp_mul(&THREE_INV,
+//!   a)` is bit-exact by construction (`fp_div3` *is* exactly that
+//!   call) and is checked at the property boundary as a sanity oracle.
+//!   The value-level identity `3 * fp_div3(a) == a mod p` is also
+//!   pinned via [`fp_is_equal`] (tripling the third back; the redundant
+//!   form is sound under the equality predicate because [`fp_is_equal`]
+//!   `redc`s both sides to canonical), independently exercising
+//!   `THREE_INV`'s defining property without leaning on raw-limb
+//!   readings of the redundant Montgomery form. No upstream defect
+//!   observed; every committed C-derived vector replays bit-for-bit.
 //! - [`fp_is_equal`] is `fp_is_equal(a, b)`, the second predicate boundary
 //!   in the gf battery: a *binary* predicate returning the same
 //!   `uint32_t` mask shape as [`fp_is_zero`] (`0xFFFFFFFF` when `a` and
@@ -1096,6 +1118,78 @@ const TWO_INV: Fp = [
 /// limb vectors).
 pub fn fp_half(out: &mut Fp, a: &Fp) {
     modmul(&TWO_INV, a, out);
+}
+
+/// Montgomery representative of `3^-1 mod p` on the level-1 generic
+/// field: the precomputed constant `3^-1 * R mod p` in the unsaturated
+/// radix-2^51 limb layout, transcribed verbatim from the reference's
+/// `static const digit_t THREE_INV[NWORDS_FIELD]` at
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:538..542`:
+///
+/// ```c
+/// // Montgomery representation of 3^-1
+/// static const digit_t THREE_INV[NWORDS_FIELD] = { 0x000555555555555d,
+///                                                  0x0002aaaaaaaaaaaa,
+///                                                  0x0005555555555555,
+///                                                  0x0002aaaaaaaaaaaa,
+///                                                  0x0000455555555555 };
+/// ```
+///
+/// Used by [`fp_div3`], the thin wrapper `modmul(THREE_INV, *a, *out)`.
+/// The constant is taken verbatim; no derivation is performed at the
+/// port (deriving it would require the Montgomery `R^2` constant and
+/// `nres`, neither of which is ported yet). The bit-for-bit
+/// correspondence with the reference is the load-bearing property; the
+/// value-level identity `3 * (THREE_INV * a * R^-1) == a mod p` is
+/// checked at the property boundary via [`fp_is_equal`].
+const THREE_INV: Fp = [
+    0x0005_5555_5555_555d,
+    0x0002_aaaa_aaaa_aaaa,
+    0x0005_5555_5555_5555,
+    0x0002_aaaa_aaaa_aaaa,
+    0x0000_4555_5555_5555,
+];
+
+/// GF(p) Montgomery division-by-three `out = a / 3 mod p`, in the
+/// redundant radix-2^51 representation, reduced to less than `2p`.
+///
+/// Mirrors the reference's `void fp_div3(fp_t *out, const fp_t *a)`
+/// (`vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:658..662`), which
+/// is the one-liner `modmul(THREE_INV, *a, *out);`. The port is the
+/// same one-liner: a single `modmul` call with the constant
+/// [`THREE_INV`] (the Montgomery representative of `3^-1 mod p`) as the
+/// first operand and `a` as the second, threading through the
+/// already-ported [`fp_mul`]'s `modmul` core. No new arithmetic of any
+/// kind is introduced; the function is the direct analogue of
+/// [`fp_half`] one slot over with [`THREE_INV`] substituted for
+/// [`TWO_INV`].
+///
+/// Two faithfully reproduced subtleties from the underlying [`fp_mul`]
+/// path:
+/// 1. The output is *not* fully canonical: limbs 0..=3 are below `2^51`
+///    (the column mask) but limb 4 is left unmasked (the final
+///    `c[4] = (spint)t` in `modmul` is a full 64-bit truncation of the
+///    residual accumulator, no `& mask`), exactly as the reference
+///    leaves it. Compare field elements with the value-level
+///    [`fp_is_equal`], never by raw-limb equality.
+/// 2. The Montgomery domain is preserved: if `a == A * R mod p`
+///    positionally, then `modmul(THREE_INV, a)` computes
+///    `(3^-1 * R) * (A * R) * R^-1 == (A / 3) * R mod p`. The output
+///    is the Montgomery representative of `A / 3`, ready to be consumed
+///    by further Montgomery-domain operations without re-conversion.
+///
+/// `THREE_INV` is taken **verbatim** from the reference's precomputed
+/// limb table at `fp_p5248_64.c:538..542`; the port does not derive it
+/// (deriving it would require `nres` and the Montgomery `R^2`
+/// constant, neither of which is ported). The bit-for-bit
+/// correspondence with the reference's constant is the load-bearing
+/// property; the value-level identity `3 * fp_div3(a) == a mod p` is
+/// pinned at the property boundary via [`fp_is_equal`] (the equality
+/// predicate's `redc` of both sides makes the tripling-back oracle
+/// sound on the canonical-equality domain even though both sides are
+/// redundant limb vectors).
+pub fn fp_div3(out: &mut Fp, a: &Fp) {
+    modmul(&THREE_INV, a, out);
 }
 
 /// Propagate carries and, if `prop` signalled the value went negative,

@@ -58,6 +58,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "fp_div3"
+path = "fuzz_targets/fp_div3.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "fp_copy"
 path = "fuzz_targets/fp_copy.rs"
 test = false
