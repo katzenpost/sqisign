@@ -141,6 +141,28 @@
 //!   endpoints are pinned, and the LSB-only contract is pinned by
 //!   recording two non-canonical ctl values (`0xfffffffe` acts as `0`,
 //!   `0xffffffff` acts as `1`).
+//! - [`fp_sqr`] is `fp_sqr(out, a)`, the thin wrapper the reference
+//!   defines over `modsqr`: Montgomery modular squaring on the level-1
+//!   generic field. `modsqr` is the squaring specialisation of `modmul`:
+//!   it uses a per-column accumulator `tot`, exploits the symmetry
+//!   `a[i] * a[j] == a[j] * a[i]` to compute each off-diagonal product
+//!   *once* and double it (`tot *= 2;`) before folding into the running
+//!   128-bit accumulator `t`, then adds the diagonal `a[i] * a[i]` (when
+//!   present in the column) un-doubled. The Montgomery reduction
+//!   (`v_{k-4} * p4` folds at columns 4..=8) and the unmasked limb-4
+//!   final write are unchanged from `modmul`. The transcription preserves
+//!   the reference's `tot = / tot += / tot *= 2 / t += tot / t += v_k*p4`
+//!   per-column structure identifier-for-identifier; `tot *= 2;` is
+//!   ported as `tot.wrapping_mul(2)` for the same reason `modmul` uses
+//!   `wrapping_add` uniformly on `u128` (the C `__uint128_t` wraps
+//!   silently, Rust panics in debug, the differential battery feeds
+//!   non-canonical full-width limbs). The empirical equivalence
+//!   `fp_sqr(a) == fp_mul(a, a)` is checked bit-exactly across the full
+//!   1012-vector battery and pinned in `fp_sqr_props.rs`: algebraically
+//!   the column sums are equal and `u128` wrapping_add is associative
+//!   and commutative, so the running `t` is bit-equal at every masking
+//!   point. No upstream defect observed; every committed C-derived vector
+//!   replays bit-for-bit.
 //!
 //! Correctness is established as for the whole port: every committed
 //! C-derived vector is replayed and bit-compared (`tests/`). Equivalence
@@ -777,4 +799,154 @@ fn modmul(a: &Fp, b: &Fp, c: &mut Fp) {
 ///   ordinary residue by to enter the Montgomery domain.
 pub fn fp_mul(out: &mut Fp, a: &Fp, b: &Fp) {
     modmul(a, b, out);
+}
+
+/// Montgomery modular squaring, `c = a * a mod 2p` in the redundant
+/// radix-2^51 representation.
+///
+/// Mirrors the reference's
+/// `inline static void modsqr(const spint *a, spint *c)` from
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:156..220`
+/// statement-for-statement.
+///
+/// `modsqr` is the squaring specialisation of `modmul`. Where `modmul`
+/// sums the full set of partial products `a[i] * b[j]` per column, `modsqr`
+/// exploits `a[i] * a[j] == a[j] * a[i]` to compute each off-diagonal
+/// product *once* and double it (in the reference, `tot *= 2;` on the
+/// per-column `tot` accumulator before it is added to the running `t`); the
+/// diagonal product `a[i] * a[i]` (when present in the column) is added
+/// after the doubling, never doubled. The Montgomery reduction structure is
+/// otherwise identical to `modmul`: at columns 4..=8 the running `t` also
+/// absorbs `v_{k-4} * p4`, the inline fold of the prime's only non-zero
+/// limb (`p4 == 0x500000000000`), and the final write `c[4] = (spint)t` is
+/// a full 64-bit truncation of the residual accumulator (no `& mask`),
+/// exactly as in `modmul`.
+///
+/// The transcription rules are the same as `modmul`'s:
+/// - `spint`/`dpint`/`udpint` -> `u64` / `u128` / `u128`.
+/// - `(udpint)a[i] * a[j]` -> `(a[i] as u128) * (a[j] as u128)`. Each
+///   factor fits in `u64`, so the product fits in `u128` and plain `*` is
+///   bit-exact to the reference's `(__uint128_t)a[i] * a[j]`.
+/// - `tot *= 2;` is the reference's column-accumulator doubling. It is
+///   *unsigned wraparound* on `__uint128_t` and the differential battery
+///   feeds non-canonical full-width limbs, so the port uses
+///   `tot.wrapping_mul(2)` to preserve the bit-exact wraparound rather
+///   than the panicking `*= 2`. Equivalent to `tot.wrapping_shl(1)`; the
+///   `wrapping_mul(2)` spelling is chosen so the identifier-by-identifier
+///   correspondence with the reference's `tot *= 2;` is visible.
+/// - `tot = ...`, `tot += ...`, `t = tot`, `t += tot` are all
+///   `tot.wrapping_add(...)` / `t.wrapping_add(tot)` for the same reason
+///   `modmul` uses `wrapping_add` uniformly on the u128 accumulator: the C
+///   `__uint128_t` wraps silently, Rust `u128 += ...` panics in debug, and
+///   the differential battery feeds non-canonical full-width limbs that
+///   can push the accumulator past `2^128`. Wrapping_add is associative
+///   and commutative on `u128` modulo `2^128`, so the column-by-column
+///   `t` value at every masking point is the same as the reference's.
+/// - `(spint)t & mask` -> `(t as u64) & MASK51`.
+/// - `(udpint)v_k * p4` -> `(v_k as u128) * (P4 as u128)`, plain `*` (the
+///   factors are bounded by `2^51` and `2^47` respectively, so no
+///   overflow). Folded into `t` at columns 4..=8, exactly as in `modmul`.
+/// - `t >>= 51` applies directly to `u128`.
+///
+/// Identifier mapping (each row preserves the reference's name verbatim):
+/// `tot`, `t`, `v0`, `v1`, `v2`, `v3`, `v4`, `c[0..=4]`, `p4` (constant
+/// inlined as `P4 as u128` at each fold). The statement order, the
+/// per-column count of `tot = / tot += / tot *= 2 / t += tot /
+/// t += v_k*p4 / t >>= 51 / mask write` constructs, and the precise
+/// placement of every `tot *= 2;` (always *after* the off-diagonal `tot`
+/// builds and *before* any same-index diagonal `tot += a[i]*a[i]` add)
+/// are preserved so the column-by-column trace lines up one-to-one with
+/// `fp_p5248_64.c:156..220`.
+fn modsqr(a: &Fp, c: &mut Fp) {
+    // The reference declares `udpint t = 0;` and overwrites it on the very
+    // next statement (`t = tot;`); the initial zero is dead-store by
+    // construction. The port collapses the dead-store into the
+    // declaration's initial assignment from `tot` so clippy's
+    // `unused_assignments` lint is honoured without altering the
+    // statement-for-statement column-by-column trace below.
+    let mut tot: u128 = (a[0] as u128) * (a[0] as u128);
+    let mut t: u128 = tot;
+    let v0: u64 = (t as u64) & MASK51;
+    t >>= 51;
+    tot = (a[0] as u128) * (a[1] as u128);
+    tot = tot.wrapping_mul(2);
+    t = t.wrapping_add(tot);
+    let v1: u64 = (t as u64) & MASK51;
+    t >>= 51;
+    tot = (a[0] as u128) * (a[2] as u128);
+    tot = tot.wrapping_mul(2);
+    tot = tot.wrapping_add((a[1] as u128) * (a[1] as u128));
+    t = t.wrapping_add(tot);
+    let v2: u64 = (t as u64) & MASK51;
+    t >>= 51;
+    tot = (a[0] as u128) * (a[3] as u128);
+    tot = tot.wrapping_add((a[1] as u128) * (a[2] as u128));
+    tot = tot.wrapping_mul(2);
+    t = t.wrapping_add(tot);
+    let v3: u64 = (t as u64) & MASK51;
+    t >>= 51;
+    tot = (a[0] as u128) * (a[4] as u128);
+    tot = tot.wrapping_add((a[1] as u128) * (a[3] as u128));
+    tot = tot.wrapping_mul(2);
+    tot = tot.wrapping_add((a[2] as u128) * (a[2] as u128));
+    t = t.wrapping_add(tot);
+    t = t.wrapping_add((v0 as u128) * (P4 as u128));
+    let v4: u64 = (t as u64) & MASK51;
+    t >>= 51;
+    tot = (a[1] as u128) * (a[4] as u128);
+    tot = tot.wrapping_add((a[2] as u128) * (a[3] as u128));
+    tot = tot.wrapping_mul(2);
+    t = t.wrapping_add(tot);
+    t = t.wrapping_add((v1 as u128) * (P4 as u128));
+    c[0] = (t as u64) & MASK51;
+    t >>= 51;
+    tot = (a[2] as u128) * (a[4] as u128);
+    tot = tot.wrapping_mul(2);
+    tot = tot.wrapping_add((a[3] as u128) * (a[3] as u128));
+    t = t.wrapping_add(tot);
+    t = t.wrapping_add((v2 as u128) * (P4 as u128));
+    c[1] = (t as u64) & MASK51;
+    t >>= 51;
+    tot = (a[3] as u128) * (a[4] as u128);
+    tot = tot.wrapping_mul(2);
+    t = t.wrapping_add(tot);
+    t = t.wrapping_add((v3 as u128) * (P4 as u128));
+    c[2] = (t as u64) & MASK51;
+    t >>= 51;
+    tot = (a[4] as u128) * (a[4] as u128);
+    t = t.wrapping_add(tot);
+    t = t.wrapping_add((v4 as u128) * (P4 as u128));
+    c[3] = (t as u64) & MASK51;
+    t >>= 51;
+    c[4] = t as u64;
+}
+
+/// GF(p) Montgomery squaring `out = a * a * R^-1 mod p`, in the redundant
+/// radix-2^51 representation, reduced to less than `2p`.
+///
+/// Mirrors the reference's `void fp_sqr(fp_t *out, const fp_t *a)`, which
+/// is the thin wrapper `modsqr(*a, *out)`. As with [`fp_mul`], the output
+/// is *not* fully canonical: limbs 0..=3 are below `2^51` (the column mask)
+/// but limb 4 is left unmasked (the final `c[4] = (spint)t` is a full
+/// 64-bit truncation of the residual accumulator, no `& mask`), exactly as
+/// the reference leaves it. Compare field elements with the reference's
+/// equality (`modcmp`, ported later), never by raw-limb equality.
+///
+/// `modsqr` is the squaring specialisation of `modmul`: the per-column set
+/// of partial products `{ a[i] * a[j] : i + j == k }` is symmetric under
+/// `(i, j) -> (j, i)`, so each off-diagonal product is computed once and
+/// doubled (`tot *= 2;`) before being added to the running accumulator,
+/// rather than computed twice; the diagonal product `a[i] * a[i]` (when
+/// present in the column) is added after the doubling. The Montgomery
+/// reduction (`v_{k-4} * p4` folds at columns 4..=8) and the unmasked
+/// limb-4 write are unchanged. Because the column sum is algebraically the
+/// same value as `modmul(a, a)`'s, `fp_sqr(a)` and `fp_mul(a, a)` produce
+/// the bit-exact same `fp_t` output: the order of the `t.wrapping_add`
+/// terms differs but `wrapping_add` is associative and commutative on
+/// `u128` modulo `2^128`, so the running `t` is bit-equal at every
+/// masking point. This equivalence was checked empirically across the
+/// full differential battery before being pinned in
+/// `fp_sqr_props.rs`.
+pub fn fp_sqr(out: &mut Fp, a: &Fp) {
+    modsqr(a, out);
 }
