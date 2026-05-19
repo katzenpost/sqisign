@@ -20,9 +20,14 @@
 //! - [`rng::CtrDrbg`] is the NIST AES-256 CTR-DRBG
 //!   (`sqisign_common::ctr_drbg`), mirroring the reference's
 //!   `randombytes_init` / `randombytes`.
+//! - [`mem::secure_clear`] is the optimiser-resistant memory wipe
+//!   (`sqisign_common::secure_clear`), mirroring the reference's
+//!   `sqisign_secure_clear`.
 //!
-//! Not yet ported (later units within Phase 1 `common`): seed expansion
-//! and the memory-zeroing utilities.
+//! With this the `common` hashing/PRNG/memory surface SQIsign actually
+//! uses is ported. Seed expansion (`nistseedexpander`) is not used by the
+//! Round 2 reference paths we target and is intentionally out of scope
+//! unless a later phase proves otherwise.
 //!
 //! Correctness is established the way the whole port is: every committed
 //! C-derived vector is replayed against this code (see the per-boundary
@@ -31,10 +36,12 @@
 #![forbid(unsafe_code)]
 
 pub mod hash;
+pub mod mem;
 pub mod rng;
 
 pub use hash::{
     sha3_256, sha3_384, sha3_512, shake128, shake256, Shake128Absorb, Shake128Squeeze,
     Shake256Absorb, Shake256Squeeze,
 };
+pub use mem::secure_clear;
 pub use rng::CtrDrbg;

@@ -49,3 +49,10 @@ path = "fuzz_targets/ctr_drbg.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "secure_clear"
+path = "fuzz_targets/secure_clear.rs"
+test = false
+doc = false
+bench = false

@@ -17,6 +17,9 @@ sha3.workspace = true
 # wire in the audited RustCrypto aes crate, prove the DRBG construction atop
 # it bit-equal to the reference (tests/ctr_drbg_vectors.rs).
 aes.workspace = true
+# Optimiser-resistant memory zeroing for sqisign_secure_clear. Hand-rolling
+# the volatile write would need unsafe, which this crate forbids.
+zeroize.workspace = true
 
 [dev-dependencies]
 sqisign-vectors.workspace = true
@@ -42,4 +45,8 @@ harness = false
 
 [[bench]]
 name = "ctr_drbg"
+harness = false
+
+[[bench]]
+name = "secure_clear"
 harness = false
