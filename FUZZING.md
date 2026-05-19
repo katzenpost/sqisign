@@ -23,6 +23,7 @@ toolchain.
 | `sqisign-mp` | `mp_add` | commutativity, zero identity, single-limb == wrapping_add | link `mp.c` for byte-equality vs C |
 | `sqisign-mp` | `mp_sub` | (a+b)-b == a, a-a == 0, single-limb == wrapping_sub | link `mp.c` for byte-equality vs C |
 | `sqisign-mp` | `mp_shiftl` | x<<1 == x+x, low shift bits clear, arbitrary width | link `mp.c` for byte-equality vs C |
+| `sqisign-mp` | `mp_shiftr` | returned bit == entry parity, top zero-filled, single-limb == native >> | link `mp.c` for byte-equality vs C |
 
 ## Running (on a host with the toolchain)
 

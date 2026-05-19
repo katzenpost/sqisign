@@ -17,6 +17,9 @@
 //! - [`mp_shiftl`] is `mp_shiftl(x, shift, nwords)`: in-place left shift
 //!   by `1..=63` bits, truncated to `nwords` (`x <- (x << shift) mod
 //!   2^(64n)`), exactly as the reference's bit-spill loop.
+//! - [`mp_shiftr`] is `mp_shiftr(x, shift, nwords)`: in-place logical
+//!   right shift by `1..=63` bits, returning the original `x[0] & 1`
+//!   (the low bit *before* shifting), as the reference does.
 //!
 //! Correctness is established as for the whole port: every committed
 //! C-derived vector is replayed and bit-compared (`tests/`). Equivalence
@@ -108,6 +111,34 @@ pub fn mp_shiftl(x: &mut [u64], shift: u32) {
     x[0] <<= shift;
 }
 
+/// In-place multiprecision logical right shift, `x = x >> shift`, where
+/// `shift` is in `1..=63`. Returns the original least-significant bit
+/// (`x[0] & 1`, captured *before* the shift), exactly as the reference's
+/// `digit_t mp_shiftr(digit_t *x, unsigned int shift, unsigned int
+/// nwords)`.
+///
+/// Each limb takes the high `shift` bits of the limb above; the top is
+/// zero-filled (logical, not arithmetic). The returned bit is *not* the
+/// last bit shifted out in general, only the value's bit 0 on entry, as
+/// the reference defines it (its callers use it as an "is odd" probe).
+///
+/// # Panics
+/// If `shift` is `0` or `>= 64`, or if `x` is empty.
+pub fn mp_shiftr(x: &mut [u64], shift: u32) -> u64 {
+    assert!(
+        (1..=63).contains(&shift),
+        "mp_shiftr: shift must be in 1..=63 (the reference's domain)"
+    );
+    assert!(!x.is_empty(), "mp_shiftr: nwords must be >= 1");
+    let bit_out = x[0] & 1;
+    let n = x.len();
+    for i in 0..n - 1 {
+        x[i] = (x[i] >> shift) ^ (x[i + 1] << (64 - shift));
+    }
+    x[n - 1] >>= shift;
+    bit_out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,6 +191,31 @@ mod tests {
         mp_shiftl(&mut x, 5);
         let got = (x[0] as u128) | ((x[1] as u128) << 64);
         assert_eq!(got, val.wrapping_shl(5));
+    }
+
+    #[test]
+    fn shiftr_logical_and_returns_entry_low_bit() {
+        // [0, 1] >> 1 = [0x8000_0000_0000_0000, 0]; returned bit is the
+        // ORIGINAL x[0]&1 (0 here), not the bit that fell out.
+        let mut x = [0u64, 1];
+        let bit = mp_shiftr(&mut x, 1);
+        assert_eq!(x, [0x8000_0000_0000_0000, 0]);
+        assert_eq!(bit, 0);
+        // Odd low limb: returned bit is 1, top zero-filled (logical).
+        let mut y = [0xffff_ffff_ffff_ffffu64];
+        let bit = mp_shiftr(&mut y, 4);
+        assert_eq!(y, [0x0fff_ffff_ffff_ffff]);
+        assert_eq!(bit, 1);
+    }
+
+    #[test]
+    fn shiftr_then_shiftl_clears_low_bits() {
+        let mut x = [0x0123_4567_89ab_cdefu64, 0xfedc_ba98_7654_3210u64];
+        let orig = x;
+        mp_shiftr(&mut x, 7);
+        mp_shiftl(&mut x, 7);
+        assert_eq!(x[0], orig[0] & !0x7f);
+        assert_eq!(x[1], orig[1]);
     }
 
     #[test]
