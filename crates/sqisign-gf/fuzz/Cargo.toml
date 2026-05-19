@@ -49,3 +49,10 @@ path = "fuzz_targets/fp_set_zero.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "fp_set_one"
+path = "fuzz_targets/fp_set_one.rs"
+test = false
+doc = false
+bench = false

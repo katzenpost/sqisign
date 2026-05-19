@@ -65,6 +65,20 @@
 //!   that boundary because each non-zero pre-fill leaves a visible
 //!   residue if any limb is forgotten. No upstream defect observed; every
 //!   committed C-derived vector replays bit-for-bit.
+//! - [`fp_set_one`] is `fp_set_one(x)`, the thin wrapper the reference
+//!   defines over `modone`, which writes positional `1` and then calls
+//!   `nres(a, a)` to convert it to its Montgomery representative. The
+//!   on-the-wire output of `fp_set_one` is therefore the Montgomery
+//!   `ONE`, `[0x19, 0, 0, 0, 0x300000000000]`, the same bit pattern
+//!   the reference exposes as `extern const ONE` at lines 526..530 of
+//!   `fp_p5248_64.c`. `nres`/`modmul`/`R2` are not yet ported, but the
+//!   output of `fp_set_one` is a single fixed constant; the port
+//!   writes it directly and bit-matches every recorded reference
+//!   output. Like [`fp_set_zero`], the differential boundary varies
+//!   the destination *pre-fill* as the "input"; any limb the port
+//!   forgets to write leaves a visible non-zero residue that diverges
+//!   from the recorded output. No upstream defect observed; every
+//!   committed C-derived vector replays bit-for-bit.
 //!
 //! Correctness is established as for the whole port: every committed
 //! C-derived vector is replayed and bit-compared (`tests/`). Equivalence
@@ -349,3 +363,45 @@ pub fn fp_copy(out: &mut Fp, a: &Fp) {
 pub fn fp_set_zero(out: &mut Fp) {
     *out = [0u64; NWORDS_FIELD];
 }
+
+/// GF(p) one setter: writes the Montgomery representative of `1`,
+/// `[0x19, 0, 0, 0, 0x300000000000]`, regardless of the destination's
+/// prior contents.
+///
+/// Mirrors the reference's `void fp_set_one(fp_t *x)`, which is the thin
+/// wrapper `modone(*x)`. The reference's `modone` writes positional
+/// `1 = 1 * 2^0` then calls `nres(a, a)` to convert it to its
+/// Montgomery n-residue form:
+///
+/// ```c
+/// static void modone(spint *a) {
+///   int i;
+///   a[0] = 1;
+///   for (i = 1; i < 5; i++) a[i] = 0;
+///   nres(a, a);
+/// }
+/// ```
+///
+/// `nres` (and the `modmul`/`R2` precomputation it relies on) is not
+/// yet ported, but the differential-boundary output of `fp_set_one` is
+/// a single fixed bit pattern: the Montgomery `ONE`, identical to the
+/// public `extern const ONE` defined at lines 526..530 of
+/// `fp_p5248_64.c`. The port writes that constant directly. At the
+/// `fp_t` boundary the two are bit-equal; when `nres` is ported it can
+/// (and should) be exercised at its own boundary, leaving `fp_set_one`
+/// as the same constant-write the reference effectively evaluates to.
+pub fn fp_set_one(out: &mut Fp) {
+    *out = MONTGOMERY_ONE;
+}
+
+/// Montgomery representative of `1` on the level-1 generic field:
+/// `1 * R mod p` in the unsaturated radix-2^51 limb layout, matching
+/// the reference's public `extern const ONE`
+/// (`fp_p5248_64.c:526..530`).
+const MONTGOMERY_ONE: Fp = [
+    0x0000_0000_0000_0019,
+    0x0000_0000_0000_0000,
+    0x0000_0000_0000_0000,
+    0x0000_0000_0000_0000,
+    0x0000_3000_0000_0000,
+];

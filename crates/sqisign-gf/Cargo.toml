@@ -37,3 +37,7 @@ harness = false
 [[bench]]
 name = "fp_set_zero"
 harness = false
+
+[[bench]]
+name = "fp_set_one"
+harness = false
