@@ -51,15 +51,17 @@ step_test() {
 step_verify() {
     # Katzenpost mix nodes pull only the verification path; building the
     # umbrella crate with default features must not drag in sqisign-sign.
-    local tree
+    local tree rc
     tree="$(mktemp)"
-    trap 'rm -f "${tree}"' RETURN
     echo ">> cargo +${TOOLCHAIN} tree -p sqisign --edges normal"
     cargo "+${TOOLCHAIN}" tree -p sqisign --edges normal | tee "${tree}"
+    rc=0
     if grep -q '^.*sqisign-sign' "${tree}"; then
         echo "error: sqisign-sign present in default (verify-only) tree" >&2
-        return 1
+        rc=1
     fi
+    rm -f "${tree}"
+    return "${rc}"
 }
 
 main() {
