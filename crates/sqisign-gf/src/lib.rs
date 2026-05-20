@@ -2938,6 +2938,502 @@ pub fn fp_decode_reduce(d: &mut Fp, src: &[u8]) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// GF(p^2) layer. Mirrors `vendor/the-sqisign/src/gf/ref/lvlx/fp2.c`.
+//
+// The level-1 quadratic extension is `Fp[X]/(X^2 + 1)`, the reference's own
+// comment at the top of `fp2.c` ("Arithmetic modulo X^2 + 1"). An element is
+// the C struct `fp2_t { fp_t re, im; }`; the Rust mirror keeps the same
+// field naming (`re`, `im`) and the same memory order so the bit-for-bit
+// boundary correspondence stays visible at the call site.
+// ---------------------------------------------------------------------------
+
+/// Byte length of the canonical `fp2` serialization, the
+/// `FP2_ENCODED_BYTES` constant from
+/// `vendor/the-sqisign/src/precomp/ref/lvl1/include/encoded_sizes.h`.
+/// It is exactly `2 * FP_ENCODED_BYTES` (64 = 2 * 32) for this level: the
+/// reference's `fp2_encode` writes `re` then `im` back to back.
+pub const FP2_ENCODED_BYTES: usize = 64;
+
+/// A level-1 GF(p^2) field element. Mirrors the C `struct fp2_t { fp_t
+/// re, im; }`; the field naming (`re`, `im`) and the storage order are
+/// preserved so the differential vector records can pin which `fp_t` half
+/// is which. Like [`Fp`], each component is the redundant radix-2^51
+/// representation: equality at this layer is therefore *not* raw struct
+/// equality, it is [`fp2_is_equal`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Fp2 {
+    pub re: Fp,
+    pub im: Fp,
+}
+
+/// Alias matching the reference's typedef `fp2_t`; the C uses the
+/// `_t`-suffixed spelling at every call site, so the alias is exposed for
+/// symmetry with [`crate::Fp`] (which mirrors `fp_t`).
+pub type Fp2t = Fp2;
+
+/// `fp2_set_small(x, val)`: write the scalar `val` into the real part and
+/// zero the imaginary part. Wraps the already-ported [`fp_set_small`] and
+/// [`fp_set_zero`]; the same int32-narrowing the [`fp_set_small`] wrapper
+/// applies to `val` is observable at this boundary (the imaginary part is
+/// not affected by `val`).
+pub fn fp2_set_small(x: &mut Fp2, val: u64) {
+    fp_set_small(&mut x.re, val);
+    fp_set_zero(&mut x.im);
+}
+
+/// `fp2_mul_small(x, y, n)`: multiply BOTH components of `y` by the
+/// scalar `n` and write into `x`. Distinct shape from [`fp2_set_small`]:
+/// `n` is consumed by both halves rather than just the real part. The
+/// same int32-narrowing the per-half [`fp_mul_small`] applies fires
+/// twice, once per component.
+pub fn fp2_mul_small(x: &mut Fp2, y: &Fp2, n: u32) {
+    fp_mul_small(&mut x.re, &y.re, n);
+    fp_mul_small(&mut x.im, &y.im, n);
+}
+
+/// `fp2_set_one(x)`: write the canonical multiplicative identity, which
+/// is `(1, 0)` in `Fp[X]/(X^2 + 1)`. The real part receives the
+/// Montgomery representative of `1`; the imaginary part is zeroed.
+pub fn fp2_set_one(x: &mut Fp2) {
+    fp_set_one(&mut x.re);
+    fp_set_zero(&mut x.im);
+}
+
+/// `fp2_set_zero(x)`: write the canonical additive identity. Both
+/// components are zeroed.
+pub fn fp2_set_zero(x: &mut Fp2) {
+    fp_set_zero(&mut x.re);
+    fp_set_zero(&mut x.im);
+}
+
+/// `fp2_is_zero(a)`: branchless `uint32_t` predicate returning the
+/// all-ones mask iff both components reduce to the field zero. The
+/// reference ANDs the two per-component masks, propagating the
+/// `{0, 0xFFFFFFFF}` convention; the port mirrors that exactly.
+pub fn fp2_is_zero(a: &Fp2) -> u32 {
+    fp_is_zero(&a.re) & fp_is_zero(&a.im)
+}
+
+/// `fp2_is_equal(a, b)`: branchless `uint32_t` predicate returning the
+/// all-ones mask iff both `re` and `im` are componentwise equal modulo
+/// `p`. As for [`fp2_is_zero`], the two per-component masks are ANDed.
+pub fn fp2_is_equal(a: &Fp2, b: &Fp2) -> u32 {
+    fp_is_equal(&a.re, &b.re) & fp_is_equal(&a.im, &b.im)
+}
+
+/// `fp2_is_one(a)`: branchless `uint32_t` predicate returning the
+/// all-ones mask iff `a == (1, 0)`. The reference compares the real
+/// part against the `extern const ONE` Montgomery representative
+/// directly via `fp_is_equal`, and ANDs that with the imaginary
+/// part's `fp_is_zero`. The port mirrors that exactly using
+/// [`MONTGOMERY_ONE`] (the same bit pattern the reference's `ONE`
+/// holds, pinned by the `nres_of_positional_one_is_montgomery_one`
+/// test in this crate).
+pub fn fp2_is_one(a: &Fp2) -> u32 {
+    fp_is_equal(&a.re, &MONTGOMERY_ONE) & fp_is_zero(&a.im)
+}
+
+/// `fp2_copy(x, y)`: componentwise copy. The same redundancy
+/// considerations [`fp_copy`] documents apply: this is a plain
+/// per-component limb assignment, NOT a canonicalisation.
+pub fn fp2_copy(x: &mut Fp2, y: &Fp2) {
+    fp_copy(&mut x.re, &y.re);
+    fp_copy(&mut x.im, &y.im);
+}
+
+/// `fp2_add(x, y, z)`: componentwise addition.
+pub fn fp2_add(x: &mut Fp2, y: &Fp2, z: &Fp2) {
+    fp_add(&mut x.re, &y.re, &z.re);
+    fp_add(&mut x.im, &y.im, &z.im);
+}
+
+/// `fp2_add_one(x, y)`: `x = y + 1`. The real part receives
+/// `y.re + ONE` (where `ONE` is the Montgomery representative of `1`,
+/// matching the reference's `&ONE` constant). The imaginary part is
+/// copied through unchanged via [`fp_copy`], NOT re-added with zero;
+/// this preserves the exact non-canonical limb pattern of `y.im`.
+pub fn fp2_add_one(x: &mut Fp2, y: &Fp2) {
+    fp_add(&mut x.re, &y.re, &MONTGOMERY_ONE);
+    fp_copy(&mut x.im, &y.im);
+}
+
+/// `fp2_sub(x, y, z)`: componentwise subtraction.
+pub fn fp2_sub(x: &mut Fp2, y: &Fp2, z: &Fp2) {
+    fp_sub(&mut x.re, &y.re, &z.re);
+    fp_sub(&mut x.im, &y.im, &z.im);
+}
+
+/// `fp2_neg(x, y)`: componentwise negation.
+pub fn fp2_neg(x: &mut Fp2, y: &Fp2) {
+    fp_neg(&mut x.re, &y.re);
+    fp_neg(&mut x.im, &y.im);
+}
+
+/// `fp2_mul(x, y, z)`: multiplication in `Fp[X]/(X^2 + 1)`. The
+/// reference uses the Karatsuba-style three-multiplication identity
+///
+/// ```text
+/// (y.re + y.im * i) * (z.re + z.im * i)
+///   = (y.re * z.re - y.im * z.im)
+///   + ((y.re + y.im) * (z.re + z.im) - y.re * z.re - y.im * z.im) * i
+/// ```
+///
+/// computed in the exact statement order of `fp2.c:95..107`:
+///
+/// 1. `t0 = y.re + y.im`
+/// 2. `t1 = z.re + z.im`
+/// 3. `t0 = t0 * t1` (sum of cross terms plus the two diagonal products)
+/// 4. `t1 = y.im * z.im` (one diagonal)
+/// 5. `x.re = y.re * z.re` (the other diagonal, stored into the
+///    destination's real part)
+/// 6. `x.im = t0 - t1` (sum of cross terms plus `y.re * z.re`)
+/// 7. `x.im = x.im - x.re` (cross terms only: this is the imaginary part)
+/// 8. `x.re = x.re - t1` (diagonal difference: this is the real part)
+///
+/// The port transcribes those eight statements identifier for
+/// identifier; an in-place write to `x.re` would alias `y.re` or
+/// `z.re` if `x` overlaps an input, so the reference's structure (write
+/// `x.re` only at step 5, then read it again at step 7) is preserved.
+pub fn fp2_mul(x: &mut Fp2, y: &Fp2, z: &Fp2) {
+    let mut t0: Fp = [0u64; NWORDS_FIELD];
+    let mut t1: Fp = [0u64; NWORDS_FIELD];
+
+    fp_add(&mut t0, &y.re, &y.im);
+    fp_add(&mut t1, &z.re, &z.im);
+    let snap_t0 = t0;
+    fp_mul(&mut t0, &snap_t0, &t1);
+    fp_mul(&mut t1, &y.im, &z.im);
+    fp_mul(&mut x.re, &y.re, &z.re);
+    let snap_xre = x.re;
+    fp_sub(&mut x.im, &t0, &t1);
+    let snap_xim = x.im;
+    fp_sub(&mut x.im, &snap_xim, &snap_xre);
+    let snap_xre2 = x.re;
+    fp_sub(&mut x.re, &snap_xre2, &t1);
+}
+
+/// `fp2_sqr(x, y)`: squaring in `Fp[X]/(X^2 + 1)`. The reference uses
+/// the standard difference-of-squares identity
+///
+/// ```text
+/// (y.re + y.im * i) ^ 2
+///   = (y.re + y.im) * (y.re - y.im) + 2 * y.re * y.im * i
+/// ```
+///
+/// computed in the exact statement order of `fp2.c:110..119`:
+///
+/// 1. `sum  = y.re + y.im`
+/// 2. `diff = y.re - y.im`
+/// 3. `x.im = y.re * y.im`
+/// 4. `x.im = x.im + x.im`         (`2 * y.re * y.im`)
+/// 5. `x.re = sum * diff`          (`y.re^2 - y.im^2`)
+pub fn fp2_sqr(x: &mut Fp2, y: &Fp2) {
+    let mut sum: Fp = [0u64; NWORDS_FIELD];
+    let mut diff: Fp = [0u64; NWORDS_FIELD];
+
+    fp_add(&mut sum, &y.re, &y.im);
+    fp_sub(&mut diff, &y.re, &y.im);
+    fp_mul(&mut x.im, &y.re, &y.im);
+    let snap_xim = x.im;
+    fp_add(&mut x.im, &snap_xim, &snap_xim);
+    fp_mul(&mut x.re, &sum, &diff);
+}
+
+/// `fp2_inv(x)`: in-place multiplicative inverse. The reference computes
+///
+/// ```text
+/// d   = re^2 + im^2
+/// x   = (re / d, -im / d)
+/// ```
+///
+/// in the exact statement order of `fp2.c:122..133`:
+///
+/// 1. `t0 = re^2`
+/// 2. `t1 = im^2`
+/// 3. `t0 = t0 + t1`              (norm)
+/// 4. `t0 = t0^-1`                (inverse of the norm)
+/// 5. `re  = re * t0`
+/// 6. `im  = im * t0`
+/// 7. `im  = -im`
+///
+/// On `x == (0, 0)` the norm is zero, [`fp_inv`] squares-and-multiplies
+/// down to the canonical zero (see [`fp_inv`]'s comment), and the
+/// resulting `x` is the canonical zero pair, matching the reference.
+pub fn fp2_inv(x: &mut Fp2) {
+    let mut t0: Fp = [0u64; NWORDS_FIELD];
+    let mut t1: Fp = [0u64; NWORDS_FIELD];
+
+    fp_sqr(&mut t0, &x.re);
+    fp_sqr(&mut t1, &x.im);
+    let snap_t0 = t0;
+    fp_add(&mut t0, &snap_t0, &t1);
+    fp_inv(&mut t0);
+    let snap_xre = x.re;
+    fp_mul(&mut x.re, &snap_xre, &t0);
+    let snap_xim = x.im;
+    fp_mul(&mut x.im, &snap_xim, &t0);
+    let snap_xim2 = x.im;
+    fp_neg(&mut x.im, &snap_xim2);
+}
+
+/// `fp2_is_square(x)`: branchless `uint32_t` predicate returning the
+/// all-ones mask iff `x` is a quadratic residue in `Fp[X]/(X^2 + 1)`.
+/// The reference uses the norm criterion: `x` is a square in `Fp^2` iff
+/// `re^2 + im^2` is a square in `Fp` (the standard reduction via the
+/// `Fp^2 -> Fp` norm). Three statements:
+///
+/// 1. `t0 = re^2`
+/// 2. `t1 = im^2`
+/// 3. `t0 = t0 + t1`
+/// 4. return `fp_is_square(t0)`
+pub fn fp2_is_square(x: &Fp2) -> u32 {
+    let mut t0: Fp = [0u64; NWORDS_FIELD];
+    let mut t1: Fp = [0u64; NWORDS_FIELD];
+
+    fp_sqr(&mut t0, &x.re);
+    fp_sqr(&mut t1, &x.im);
+    let snap = t0;
+    fp_add(&mut t0, &snap, &t1);
+    fp_is_square(&t0)
+}
+
+/// `fp2_sqrt(a)`: in-place square root, from Aardal et al, eprint
+/// 2024/1563 ("Optimized One-Dimensional SQIsign Verification on Intel
+/// and Cortex-M4"). The transcription preserves the reference's
+/// `fp2.c:148..202` statement order identifier-for-identifier; see the
+/// reference comment block for the algebra. The choice of representative
+/// (negate-when-odd-or-zero-and-other-odd) is canonicalised via
+/// [`fp_encode`] on `t0` and `t1` and reading the parity off the
+/// low byte, exactly as the reference does.
+pub fn fp2_sqrt(a: &mut Fp2) {
+    let mut x0: Fp = [0u64; NWORDS_FIELD];
+    let mut x1: Fp = [0u64; NWORDS_FIELD];
+    let mut t0: Fp = [0u64; NWORDS_FIELD];
+    let mut t1: Fp = [0u64; NWORDS_FIELD];
+
+    // x0 = delta = sqrt(a.re^2 + a.im^2)
+    fp_sqr(&mut x0, &a.re);
+    fp_sqr(&mut x1, &a.im);
+    let snap_x0 = x0;
+    fp_add(&mut x0, &snap_x0, &x1);
+    fp_sqrt(&mut x0);
+    // If a.im == 0, restore delta = a.re.
+    let snap_x0b = x0;
+    fp_select(&mut x0, &snap_x0b, &a.re, fp_is_zero(&a.im));
+    // x0 = delta + a.re; t0 = 2 * x0.
+    let snap_x0c = x0;
+    fp_add(&mut x0, &snap_x0c, &a.re);
+    fp_add(&mut t0, &x0, &x0);
+    // x1 = t0^((p-3)/4)
+    fp_exp3div4(&mut x1, &t0);
+    // x0 = x0 * x1, x1 = x1 * a.im, t1 = (2*x0)^2.
+    let snap_x0d = x0;
+    fp_mul(&mut x0, &snap_x0d, &x1);
+    let snap_x1 = x1;
+    fp_mul(&mut x1, &snap_x1, &a.im);
+    fp_add(&mut t1, &x0, &x0);
+    let snap_t1 = t1;
+    fp_sqr(&mut t1, &snap_t1);
+    // If t1 == t0, return x0 + x1*i; otherwise x1 - x0*i.
+    let snap_t0b = t0;
+    fp_sub(&mut t0, &snap_t0b, &t1);
+    let f = fp_is_zero(&t0);
+    fp_neg(&mut t1, &x0);
+    fp_copy(&mut t0, &x1);
+    let snap_t0c = t0;
+    fp_select(&mut t0, &snap_t0c, &x0, f);
+    let snap_t1b = t1;
+    fp_select(&mut t1, &snap_t1b, &x1, f);
+
+    let t0_is_zero = fp_is_zero(&t0);
+
+    let mut tmp_bytes = [0u8; FP_ENCODED_BYTES];
+    fp_encode(&mut tmp_bytes, &t0);
+    let t0_is_odd = 0u32.wrapping_sub((tmp_bytes[0] as u32) & 1);
+    fp_encode(&mut tmp_bytes, &t1);
+    let t1_is_odd = 0u32.wrapping_sub((tmp_bytes[0] as u32) & 1);
+
+    let negate_output = t0_is_odd | (t0_is_zero & t1_is_odd);
+    fp_neg(&mut x0, &t0);
+    fp_select(&mut a.re, &t0, &x0, negate_output);
+    fp_neg(&mut x0, &t1);
+    fp_select(&mut a.im, &t1, &x0, negate_output);
+}
+
+/// `fp2_sqrt_verify(a)`: in-place square root with a verification
+/// check. The reference saves `a` to `t0`, computes `fp2_sqrt(a)`,
+/// squares the result into `t1`, and returns `fp2_is_equal(&t0, &t1)`.
+/// The post-call value of `a` is therefore the *square root* (or
+/// whatever the sqrt routine produced on a non-square, which is not
+/// guaranteed to satisfy the verify), and the returned `uint32_t` is
+/// `0xFFFFFFFF` exactly when the input was a square (so the squaring
+/// reproduces the input). On a non-square input, the post-call `a` is
+/// not generally `0`; it is whatever `fp2_sqrt` deposited, and the
+/// returned mask is `0`.
+pub fn fp2_sqrt_verify(a: &mut Fp2) -> u32 {
+    let t0 = *a;
+    fp2_sqrt(a);
+    let mut t1 = Fp2 {
+        re: [0u64; NWORDS_FIELD],
+        im: [0u64; NWORDS_FIELD],
+    };
+    fp2_sqr(&mut t1, a);
+    fp2_is_equal(&t0, &t1)
+}
+
+/// `fp2_half(x, y)`: componentwise halving (multiplication by
+/// `2^-1 mod p`), routed through the already-ported [`fp_half`] twice.
+pub fn fp2_half(x: &mut Fp2, y: &Fp2) {
+    fp_half(&mut x.re, &y.re);
+    fp_half(&mut x.im, &y.im);
+}
+
+/// `fp2_encode(dst, a)`: write 64 bytes, the canonical serialization of
+/// `a`. The first 32 bytes are [`fp_encode`] of `a.re`, the second 32
+/// are [`fp_encode`] of `a.im`. The reference uses `void *dst` with
+/// pointer arithmetic; the port takes the same 64-byte buffer as a
+/// fixed-size array.
+pub fn fp2_encode(dst: &mut [u8; FP2_ENCODED_BYTES], a: &Fp2) {
+    let (re_dst, im_dst) = dst.split_at_mut(FP_ENCODED_BYTES);
+    let re_arr: &mut [u8; FP_ENCODED_BYTES] = re_dst.try_into().unwrap();
+    let im_arr: &mut [u8; FP_ENCODED_BYTES] = im_dst.try_into().unwrap();
+    fp_encode(re_arr, &a.re);
+    fp_encode(im_arr, &a.im);
+}
+
+/// `fp2_decode(d, src)`: read 64 bytes, write `d` and return the
+/// canonical-range mask `re_mask & im_mask`. Both per-half decodes must
+/// be in range for the combined result to be `0xFFFFFFFF`; either out
+/// of range, the combined mask is `0`. The reference returns `re & im`
+/// (bitwise AND of the two `uint32_t` per-half masks), the port mirrors
+/// that exactly. The decoded `d.re` and `d.im` may carry the
+/// out-of-range zeroing applied per-half by [`fp_decode`] (see
+/// [`fp_decode`]'s ANDing of `res` into every limb), so the output is
+/// only meaningful on the in-range branch.
+pub fn fp2_decode(d: &mut Fp2, src: &[u8; FP2_ENCODED_BYTES]) -> u32 {
+    let (re_src, im_src) = src.split_at(FP_ENCODED_BYTES);
+    let re_arr: &[u8; FP_ENCODED_BYTES] = re_src.try_into().unwrap();
+    let im_arr: &[u8; FP_ENCODED_BYTES] = im_src.try_into().unwrap();
+    let re = fp_decode(&mut d.re, re_arr);
+    let im = fp_decode(&mut d.im, im_arr);
+    re & im
+}
+
+/// `fp2_select(d, a0, a1, ctl)`: branchless componentwise conditional
+/// select. The same `ctl` contract [`fp_select`] documents applies: the
+/// reference restricts `ctl` to `0x00000000` (select `a0`) or
+/// `0xFFFFFFFF` (select `a1`); any other `ctl` is undefined.
+pub fn fp2_select(d: &mut Fp2, a0: &Fp2, a1: &Fp2, ctl: u32) {
+    fp_select(&mut d.re, &a0.re, &a1.re, ctl);
+    fp_select(&mut d.im, &a0.im, &a1.im, ctl);
+}
+
+/// `fp2_cswap(a, b, ctl)`: branchless componentwise conditional swap.
+/// The same `ctl & 1` LSB-only contract [`fp_cswap`] documents applies.
+pub fn fp2_cswap(a: &mut Fp2, b: &mut Fp2, ctl: u32) {
+    fp_cswap(&mut a.re, &mut b.re, ctl);
+    fp_cswap(&mut a.im, &mut b.im, ctl);
+}
+
+/// `FP_ENCODED_BYTES`: byte length of the canonical `fp` serialization,
+/// matching the reference's per-level constant in
+/// `encoded_sizes.h`. Hardcoded to 32 here because [`fp_encode`] /
+/// [`fp_decode`] are typed against `[u8; 32]` directly; the `fp2`
+/// boundaries above use this constant to slice the 64-byte fp2 buffer
+/// into its two halves.
+const FP_ENCODED_BYTES: usize = 32;
+
+/// `fp2_batched_inv(x, len)`: Montgomery's batched inverse. Replaces
+/// each element of `x` with its inverse in place; the cost is one
+/// `fp2_inv` plus `3 * (len - 1)` `fp2_mul` calls (instead of the
+/// `len` `fp2_inv` calls a naive loop would do). The reference uses
+/// C99 VLAs `t1[len], t2[len]`; the port uses heap `Vec`s of the
+/// same length for the same prefix-product / suffix-product
+/// scratchpads. Statement order matches `fp2.c:223..251` exactly.
+///
+/// A differential boundary for this routine would require a new
+/// emitter shape (variable-length list of fp2 in / variable-length
+/// list of fp2 out); pinning equivalence to the reference for a
+/// composite chain of [`fp2_mul`] and [`fp2_inv`] adds no new
+/// algebraic content over those primitives' own per-call differential
+/// vectors. Left out of the fp2 mega-batch differential gate
+/// deliberately; the primitives it composes are pinned bit-for-bit.
+pub fn fp2_batched_inv(x: &mut [Fp2]) {
+    let len = x.len();
+    if len == 0 {
+        return;
+    }
+    let zero_fp2 = Fp2 {
+        re: [0u64; NWORDS_FIELD],
+        im: [0u64; NWORDS_FIELD],
+    };
+    let mut t1: Vec<Fp2> = vec![zero_fp2; len];
+    let mut t2: Vec<Fp2> = vec![zero_fp2; len];
+
+    // t1 = x0, x0*x1, ..., x0 * x1 * ... * xn
+    fp2_copy(&mut t1[0], &x[0]);
+    for i in 1..len {
+        let prev = t1[i - 1];
+        fp2_mul(&mut t1[i], &prev, &x[i]);
+    }
+
+    // inverse = 1 / (x0 * x1 * ... * xn)
+    let mut inverse = t1[len - 1];
+    fp2_inv(&mut inverse);
+
+    fp2_copy(&mut t2[0], &inverse);
+    // t2 = 1 / (x0 * x1 * ... * xn), 1 / (x0 * x1 * ... * x(n-1)), ..., 1 / x0
+    for i in 1..len {
+        let prev = t2[i - 1];
+        fp2_mul(&mut t2[i], &prev, &x[len - i]);
+    }
+
+    fp2_copy(&mut x[0], &t2[len - 1]);
+
+    for i in 1..len {
+        let lhs = t1[i - 1];
+        let rhs = t2[len - i - 1];
+        fp2_mul(&mut x[i], &lhs, &rhs);
+    }
+}
+
+/// `fp2_pow_vartime(out, x, exp, size)`: square-and-multiply
+/// exponentiation. **Not constant time** (the reference comment is
+/// "Warning!! Not constant time!"). `exp` is `size` little-endian
+/// `digit_t == u64` words; the loop walks each word low to high and
+/// each bit within a word low to high, multiplying when the bit is
+/// set and squaring on every step. Statement order mirrors
+/// `fp2.c:256..275`.
+///
+/// As for [`fp2_batched_inv`], a differential boundary for this
+/// composite over [`fp2_mul`] and [`fp2_sqr`] adds no new algebraic
+/// content. Left out of the fp2 mega-batch differential gate
+/// deliberately.
+pub fn fp2_pow_vartime(out: &mut Fp2, x: &Fp2, exp: &[u64]) {
+    let mut acc = *x;
+    fp2_set_one(out);
+
+    // The reference loops `for (int i = 0; i < RADIX; i++)` where
+    // `RADIX == 64` (the digit_t bit-width set by `tutil.h` under
+    // `RADIX_64`, not the field's per-limb radix of 51 which is a
+    // different `RADIX` macro in the `fp_p5248_64.h` namespace). The
+    // loop walks the 64 bits of each digit low to high.
+    const DIGIT_BITS: u32 = 64;
+
+    for &word in exp {
+        for i in 0..DIGIT_BITS {
+            let bit = (word >> i) & 1;
+            if bit == 1 {
+                let snap_out = *out;
+                fp2_mul(out, &snap_out, &acc);
+            }
+            let snap_acc = acc;
+            fp2_sqr(&mut acc, &snap_acc);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
