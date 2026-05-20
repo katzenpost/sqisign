@@ -8,6 +8,11 @@ description = "SQIsign KeyGen and Sign protocols. Pulls the full quaternion/id2i
 
 [dependencies]
 sqisign-common.workspace = true
+sqisign-gf.workspace = true
+sqisign-mp.workspace = true
+sqisign-ec.workspace = true
+sqisign-hd.workspace = true
+sqisign-precomp.workspace = true
 sqisign-quaternion.workspace = true
 sqisign-id2iso.workspace = true
 sqisign-verify.workspace = true

@@ -50,7 +50,7 @@ pub mod id2iso;
 
 pub use dim2id2iso::{
     dim2id2iso_arbitrary_isogeny_evaluation, dim2id2iso_ideal_to_isogeny_clapotis, find_uv,
-    fixed_degree_isogeny_and_eval,
+    fixed_degree_isogeny_and_eval, QUAT_EQUIV_BOUND_COEFF, QUAT_REPRESENT_INTEGER_PRIMALITY_ITER,
 };
 pub use id2iso::{
     change_of_basis_matrix_tate, change_of_basis_matrix_tate_invert, ec_biscalar_mul_ibz_vec,
