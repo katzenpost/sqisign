@@ -8,8 +8,10 @@ description = "SQIsign ideal-to-isogeny translation. Verification uses one direc
 
 [dependencies]
 sqisign-common.workspace = true
+sqisign-mp.workspace = true
 sqisign-gf.workspace = true
 sqisign-ec.workspace = true
+sqisign-hd.workspace = true
 sqisign-precomp.workspace = true
 sqisign-quaternion.workspace = true
 

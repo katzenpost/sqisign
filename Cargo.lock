@@ -947,6 +947,8 @@ dependencies = [
  "sqisign-common",
  "sqisign-ec",
  "sqisign-gf",
+ "sqisign-hd",
+ "sqisign-mp",
  "sqisign-precomp",
  "sqisign-quaternion",
  "sqisign-vectors",
