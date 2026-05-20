@@ -302,6 +302,180 @@
 //!   empirically across all 1132 records before pinning). No upstream
 //!   defect observed; every committed C-derived vector replays
 //!   bit-for-bit.
+//! - [`fp_exp3div4`] is `fp_exp3div4(out, a)`, the thin wrapper the
+//!   reference defines over `modpro`:
+//!
+//!   ```c
+//!   void fp_exp3div4(fp_t *out, const fp_t *a) {
+//!       modpro(*a, *out);
+//!   }
+//!   ```
+//!
+//!   `modpro` is the level-1 field's hand-built fixed addition chain
+//!   that computes the *progenitor* `a^((p-3)/4) mod p`, the Montgomery
+//!   representative the rest of the chain ([`fp_inv`], [`fp_sqrt`],
+//!   [`fp_is_square`]) builds on by squaring further and/or multiplying
+//!   by `a`. The port adds two new internal helpers alongside the
+//!   existing `modmul`/`modsqr`/`modcpy` infrastructure: [`modnsqr`],
+//!   the trivial n-fold-squaring loop, and [`modpro`] itself, a
+//!   step-for-step transcription of the reference's fixed chain of
+//!   `modsqr`/`modmul`/`modnsqr` calls preserving the six scratch
+//!   buffers (`x`, `t0..t4`) the reference uses. Bit-for-bit
+//!   correspondence is established by the differential battery (every
+//!   committed C-derived vector replays bit-for-bit at the redundant
+//!   limb level); no upstream defect observed.
+//! - [`fp_inv`] is `fp_inv(x)`, the in-place modular inverse the
+//!   reference defines over `modinv`:
+//!
+//!   ```c
+//!   void fp_inv(fp_t *x) {
+//!       modinv(*x, NULL, *x);
+//!   }
+//!   ```
+//!
+//!   `modinv` builds the inverse via Fermat (`x^(p-2)`) by computing the
+//!   progenitor `x^((p-3)/4)` (when `h == NULL`, as it is here), squaring
+//!   it twice to obtain `x^(p-3)`, and multiplying by `x` to obtain
+//!   `x^(p-2) == x^-1`. The port adds [`modinv`] as a new internal
+//!   helper threading [`modpro`]/[`modnsqr`]/[`modmul`]/[`modcpy`]
+//!   (already ported with the [`fp_exp3div4`] commit, modulo modinv
+//!   itself); the in-place wrapper resolves Rust's borrow-checker
+//!   conflict by snapshotting `*x` to a local before passing the
+//!   snapshot as input and `x` as destination. The differential battery
+//!   exercises the wrapper's `None` branch; the `Some(h)` branch is
+//!   exercised by the cross-validating property test that recomputes
+//!   the progenitor and inverts via the precomputed-progenitor path.
+//!   The value-level identity `fp_mul(fp_inv(a), a) ==_field 1` is
+//!   pinned as a property test (the named exception per sir's
+//!   directive, sound on canonical-nonzero inputs). No upstream defect
+//!   observed.
+//! - [`fp_is_square`] is `fp_is_square(a)`, the predicate boundary
+//!   returning a `uint32_t` mask (`0xFFFFFFFF` if `a` is a quadratic
+//!   residue mod `p`, `0` otherwise). The reference's wrapper is
+//!
+//!   ```c
+//!   uint32_t fp_is_square(const fp_t *a) {
+//!       return -(uint32_t)modqr(NULL, *a);
+//!   }
+//!   ```
+//!
+//!   `modqr` evaluates the Euler criterion `x^((p-1)/2)`: when `h ==
+//!   NULL` it computes the progenitor `x^((p-3)/4)`, squares it to get
+//!   `x^((p-3)/2)`, multiplies by `x` to get `x^((p-1)/2)`, and tests
+//!   for unity via [`modis1`] OR-d with [`modis0`] (so the field zero
+//!   is treated as a square per the reference's convention). The
+//!   `-(uint32_t)` cast turns the `{0, 1}` return into the
+//!   `{0, 0xFFFFFFFF}` mask, the same shape as [`fp_is_zero`] and
+//!   [`fp_is_equal`]. New internal helpers landed here: [`modis1`] (the
+//!   is-Montgomery-one predicate, twin to [`modis0`] using the same
+//!   `(d - 1) >> 51 & 1` zero-detect trick) and [`modqr`] itself. The
+//!   differential battery includes the canonical zero (positive
+//!   outcome by convention), the Montgomery [`MONTGOMERY_ONE`]
+//!   (positive: `1` is a square), the radix-2^51 encoding of `p`
+//!   (positive: reduces to zero), and arbitrary full-width limbs
+//!   (mostly negative: roughly half the residues are quadratic
+//!   non-residues). No upstream defect observed.
+//! - [`fp_sqrt`] is `fp_sqrt(a)`, the in-place modular square root the
+//!   reference defines over `modsqrt`:
+//!
+//!   ```c
+//!   void fp_sqrt(fp_t *a) {
+//!       modsqrt(*a, NULL, *a);
+//!   }
+//!   ```
+//!
+//!   `modsqrt` exploits `p == 3 mod 4` (which holds for the level-1
+//!   `p5248`): `sqrt(x) == x^((p+1)/4) == x^((p-3)/4) * x ==
+//!   progenitor * x mod p`. When `h == NULL` (as it is at this boundary)
+//!   the progenitor is computed via [`modpro`] and the single [`modmul`]
+//!   yields the root. On a non-residue, the returned value is
+//!   meaningless garbage (the reference makes no defensive check; the
+//!   port follows). [`modsqrt`] is added as a new internal helper. The
+//!   in-place wrapper resolves the borrow-checker conflict as [`fp_inv`]
+//!   does. The value-level identity `fp_sqr(fp_sqrt(a)) ==_field a`
+//!   on quadratic residues is pinned as the named property exception
+//!   (gated on [`fp_is_square`] returning the positive mask). No upstream
+//!   defect observed.
+//! - [`fp_encode`] is `fp_encode(dst, a)`, the 32-byte canonical
+//!   little-endian serialization the reference defines as a modified
+//!   `modexp`:
+//!
+//!   ```c
+//!   void fp_encode(void *dst, const fp_t *a) {
+//!       spint c[5];
+//!       redc(*a, c);
+//!       for (int i = 0; i < 32; i++) {
+//!           ((char *)dst)[i] = c[0] & 0xff;
+//!           (void)modshr(8, c);
+//!       }
+//!   }
+//!   ```
+//!
+//!   [`redc`] canonicalises the Montgomery representative to the
+//!   positional residue below `p`, then the byte loop peels off the low
+//!   byte of limb 0 and shifts the five-limb value right by 8 bits
+//!   ([`modshr`], a new internal helper) thirty-two times. The port
+//!   takes `&mut [u8; 32]` for the destination so the 32-byte contract
+//!   is encoded in the type. The boundary's record schema is the new
+//!   `fp -> bytes` shape: `{"a": <5 u64 LE>} -> {"dst": <32 byte LE>}`.
+//!   No upstream defect observed.
+//! - [`fp_decode`] is `fp_decode(d, src)`, the canonical-range-checked
+//!   32-byte deserialization the reference defines as a modified
+//!   `modimp`:
+//!
+//!   ```c
+//!   uint32_t fp_decode(fp_t *d, const void *src) {
+//!       const unsigned char *b = src;
+//!       for (int i = 0; i < 5; i++) (*d)[i] = 0;
+//!       for (int i = 31; i >= 0; i--) {
+//!           modshl(8, *d);
+//!           (*d)[0] += (spint)b[i];
+//!       }
+//!       spint res = (spint)-modfsb(*d);
+//!       nres(*d, *d);
+//!       for (int i = 0; i < 5; i++) (*d)[i] &= res;
+//!       return (uint32_t)res;
+//!   }
+//!   ```
+//!
+//!   The bytes are folded into `d` in descending address order via
+//!   [`modshl`] (the new internal helper, in-place left shift by `n <
+//!   51` bits) and a single-byte add into limb 0. [`modfsb`] returns
+//!   `1` iff the decoded value is below `p`; the reference negates that
+//!   to a full-width mask `res`, runs [`nres`] to convert to Montgomery
+//!   form, and ANDs `res` into every limb so an out-of-range input is
+//!   zeroed on the way out. The returned `uint32_t` mask is the same
+//!   shape as the other predicate wrappers: `0xFFFFFFFF` on canonical
+//!   in-range input, `0` on out-of-range. The boundary's record schema
+//!   is the new `bytes -> fp + u32` shape: `{"src": <32 byte LE>} ->
+//!   {"d": <5 u64 LE>, "result": <4 byte LE u32>}`. The differential
+//!   battery deliberately partitions edge inputs into canonical
+//!   (positive outcome, `d` set) and non-canonical (negative outcome,
+//!   `d` zeroed) classes. No upstream defect observed.
+//! - [`fp_decode_reduce`] is `fp_decode_reduce(d, src, len)`, the
+//!   arbitrary-length-input reducer the reference defines as a two-phase
+//!   fold:
+//!
+//!   ```c
+//!   void fp_decode_reduce(fp_t *d, const void *src, size_t len);
+//!   ```
+//!
+//!   The trailing partial block (`len % 32`) is decoded into `d` via
+//!   [`fp_decode`] after zero-padding, then each preceding 32-byte
+//!   block is partially-reduced via the level-1 prime's `5 * 2^248 ==
+//!   1 mod p` identity ([`partial_reduce`], a new internal helper on a
+//!   plain 4-limb 256-bit array), re-encoded, decoded via [`fp_decode`]
+//!   again, and added to `d` *after* `d` has been multiplied by [`R2`]
+//!   `== 2^256 mod p` (the Montgomery representative of the per-block
+//!   shift). New internal helpers landed here: [`R2`], [`partial_reduce`],
+//!   [`add_carry`], [`dec64le`], [`enc64le`]. The boundary's record
+//!   schema is the variable-length `bytes -> fp` shape: `{"src": <hex
+//!   of bytes>, "len": <8 byte LE u64>} -> {"d": <5 u64 LE>}`. The
+//!   differential battery sweeps representative lengths including `0`
+//!   (the empty-input early-return), `< 32` (partial-block-only),
+//!   `32`/`33`/`63`/`64`/`100`/`200` (one full block crossed with
+//!   partial-block variants and multi-block chains). No upstream defect
+//!   observed.
 //! - [`fp_is_equal`] is `fp_is_equal(a, b)`, the second predicate boundary
 //!   in the gf battery: a *binary* predicate returning the same
 //!   `uint32_t` mask shape as [`fp_is_zero`] (`0xFFFFFFFF` when `a` and
@@ -1829,6 +2003,939 @@ fn modmli(a: &Fp, b: i32, c: &mut Fp) {
 ///    rather than supplied as a precomputed constant.
 pub fn fp_mul_small(out: &mut Fp, a: &Fp, val: u32) {
     modmli(a, val as i32, out);
+}
+
+/// In-place n-fold Montgomery squaring `a <- a^(2^n) mod 2p` in the
+/// redundant radix-2^51 representation.
+///
+/// Mirrors the reference's
+/// `static void modnsqr(spint *a, int n)` at
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:228..233` exactly:
+///
+/// ```c
+/// static void modnsqr(spint *a, int n) {
+///   int i;
+///   for (i = 0; i < n; i++) {
+///     modsqr(a, a);
+///   }
+/// }
+/// ```
+///
+/// A trivial loop calling [`modsqr`] in place `n` times. The reference
+/// passes the same `a` as both source and destination of `modsqr`; the
+/// port mirrors the in-place pattern by squaring into a scratch and
+/// copying back limb for limb (Rust's borrow checker would reject the
+/// aliased `modsqr(a, a)` directly even though the underlying [`modmul`]
+/// is aliasing-safe by virtue of its column-ordered reads-then-writes).
+/// The intermediate `tmp` is bit-equal to what the reference would
+/// produce in place.
+///
+/// `n` is `int` in the reference; this port takes `i32` and treats a
+/// zero or negative count as a no-op (the reference's `for` loop has the
+/// same behaviour for `n <= 0`). The callers in [`modpro`] and
+/// [`modinv`] pass small non-negative literals.
+fn modnsqr(a: &mut Fp, n: i32) {
+    for _ in 0..n {
+        let mut tmp: Fp = [0u64; NWORDS_FIELD];
+        modsqr(a, &mut tmp);
+        *a = tmp;
+    }
+}
+
+/// Compute the progenitor of `w`, `z = w^((p-3)/4) mod p`, the Montgomery
+/// representative used by [`modsqrt`] and [`modinv`] to extract roots and
+/// inverses via Fermat's little theorem.
+///
+/// Mirrors the reference's
+/// `static void modpro(const spint *w, spint *z)` at
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:236..281`
+/// statement-for-statement. The reference is a hand-built fixed addition
+/// chain of [`modsqr`]/[`modmul`]/[`modnsqr`] calls (see the upstream
+/// comment "// Calculate progenitor"); the port preserves the exact
+/// sequence and scratch-variable usage so the per-step intermediate
+/// Montgomery representatives are bit-identical to the reference's.
+///
+/// Six five-limb scratches (`x`, `t0`, `t1`, `t2`, `t3`, `t4`) mirror the
+/// reference's `spint x[5]; ... t4[5];` declarations. The reference uses
+/// in-place [`modsqr`] on the same buffer (e.g. `modsqr(t0, z)`) and
+/// in-place [`modmul`] with one operand aliased to the destination (e.g.
+/// `modmul(x, z, z)`); the port uses fresh stack-resident scratches for
+/// the [`modmul`] aliased case (the Rust borrow checker rejects the
+/// equivalent aliased borrow even though the underlying column-ordered
+/// writes are aliasing-safe), and likewise routes [`modsqr`] through a
+/// `tmp` scratch followed by `*dst = tmp;`. The output `z` is bit-equal
+/// to what the reference would produce.
+///
+/// The progenitor is the building block of:
+/// - [`modinv`] when no precomputed `h` is supplied (computes `progenitor`
+///   then squares twice and multiplies by `x` to obtain `x^-1`).
+/// - [`modqr`] (squares the progenitor and multiplies by `x`, returning
+///   `1` for a quadratic residue via [`modis1`]).
+/// - [`modsqrt`] (multiplies the progenitor by `x` to obtain `sqrt(x)`).
+fn modpro(w: &Fp, z: &mut Fp) {
+    let x: Fp = *w;
+    let mut t0: Fp = [0u64; NWORDS_FIELD];
+    let mut t1: Fp = [0u64; NWORDS_FIELD];
+    let mut t2: Fp = [0u64; NWORDS_FIELD];
+    let mut t3: Fp = [0u64; NWORDS_FIELD];
+    let mut t4: Fp;
+    modsqr(&x, z);
+    modmul(&x, z, &mut t0);
+    {
+        let src = t0;
+        modsqr(&src, z);
+    }
+    {
+        let mut tmp: Fp = [0u64; NWORDS_FIELD];
+        modmul(&x, z, &mut tmp);
+        *z = tmp;
+    }
+    modsqr(z, &mut t1);
+    modsqr(&t1, &mut t3);
+    modsqr(&t3, &mut t2);
+    t4 = t2;
+    modnsqr(&mut t4, 3);
+    {
+        let mut tmp: Fp = [0u64; NWORDS_FIELD];
+        modmul(&t2, &t4, &mut tmp);
+        t2 = tmp;
+    }
+    t4 = t2;
+    modnsqr(&mut t4, 6);
+    {
+        let mut tmp: Fp = [0u64; NWORDS_FIELD];
+        modmul(&t2, &t4, &mut tmp);
+        t2 = tmp;
+    }
+    t4 = t2;
+    modnsqr(&mut t4, 2);
+    {
+        let mut tmp: Fp = [0u64; NWORDS_FIELD];
+        modmul(&t3, &t4, &mut tmp);
+        t3 = tmp;
+    }
+    modnsqr(&mut t3, 13);
+    {
+        let mut tmp: Fp = [0u64; NWORDS_FIELD];
+        modmul(&t2, &t3, &mut tmp);
+        t2 = tmp;
+    }
+    t3 = t2;
+    modnsqr(&mut t3, 27);
+    {
+        let mut tmp: Fp = [0u64; NWORDS_FIELD];
+        modmul(&t2, &t3, &mut tmp);
+        t2 = tmp;
+    }
+    {
+        let mut tmp: Fp = [0u64; NWORDS_FIELD];
+        modmul(z, &t2, &mut tmp);
+        *z = tmp;
+    }
+    t2 = *z;
+    modnsqr(&mut t2, 4);
+    {
+        let mut tmp: Fp = [0u64; NWORDS_FIELD];
+        modmul(&t1, &t2, &mut tmp);
+        t1 = tmp;
+    }
+    {
+        let mut tmp: Fp = [0u64; NWORDS_FIELD];
+        modmul(&t0, &t1, &mut tmp);
+        t0 = tmp;
+    }
+    {
+        let mut tmp: Fp = [0u64; NWORDS_FIELD];
+        modmul(&t1, &t0, &mut tmp);
+        t1 = tmp;
+    }
+    {
+        let mut tmp: Fp = [0u64; NWORDS_FIELD];
+        modmul(&t0, &t1, &mut tmp);
+        t0 = tmp;
+    }
+    modmul(&t1, &t0, &mut t2);
+    {
+        let mut tmp: Fp = [0u64; NWORDS_FIELD];
+        modmul(&t0, &t2, &mut tmp);
+        t0 = tmp;
+    }
+    {
+        let mut tmp: Fp = [0u64; NWORDS_FIELD];
+        modmul(&t1, &t0, &mut tmp);
+        t1 = tmp;
+    }
+    modnsqr(&mut t1, 63);
+    {
+        let mut tmp: Fp = [0u64; NWORDS_FIELD];
+        modmul(&t0, &t1, &mut tmp);
+        t1 = tmp;
+    }
+    modnsqr(&mut t1, 64);
+    {
+        let mut tmp: Fp = [0u64; NWORDS_FIELD];
+        modmul(&t0, &t1, &mut tmp);
+        t0 = tmp;
+    }
+    modnsqr(&mut t0, 57);
+    {
+        let mut tmp: Fp = [0u64; NWORDS_FIELD];
+        modmul(z, &t0, &mut tmp);
+        *z = tmp;
+    }
+}
+
+/// Compute the modular inverse `z = x^-1 mod p` via Fermat (`x * x^(p-2)
+/// == 1 mod p`). Mirrors the reference's
+/// `static void modinv(const spint *x, const spint *h, spint *z)` at
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:284..295` exactly:
+///
+/// ```c
+/// static void modinv(const spint *x, const spint *h, spint *z) {
+///   spint s[5];
+///   spint t[5];
+///   if (h == NULL) {
+///     modpro(x, t);
+///   } else {
+///     modcpy(h, t);
+///   }
+///   modcpy(x, s);
+///   modnsqr(t, 2);
+///   modmul(s, t, z);
+/// }
+/// ```
+///
+/// `h` is the optional precomputed progenitor of `x`; when `None`, this
+/// port computes it via [`modpro`] (the reference does the same on the
+/// `h == NULL` branch). The port's `Option<&Fp>` mirrors the reference's
+/// nullable-pointer contract: `Some(h)` is the precomputed-progenitor
+/// case, `None` triggers the [`modpro`] call. The only [`fp_inv`] caller
+/// in this port passes `None`, so the precomputed-progenitor branch is
+/// exercised by the differential battery only via the cross-validating
+/// property tests that exist for symmetry with the reference.
+///
+/// The inversion identity is `x * x^((p-3)/4)^4 == x * x^(p-3) ==
+/// x^(p-2) == x^-1 mod p` (using `progenitor == x^((p-3)/4)` and the
+/// final two squarings raising to `^4`); the structure factors into a
+/// progenitor evaluation, two further squarings, and one final multiply,
+/// exactly as the reference encodes it.
+fn modinv(x: &Fp, h: Option<&Fp>, z: &mut Fp) {
+    let mut t: Fp = [0u64; NWORDS_FIELD];
+    match h {
+        None => modpro(x, &mut t),
+        Some(h) => t = *h,
+    }
+    let s: Fp = *x;
+    modnsqr(&mut t, 2);
+    modmul(&s, &t, z);
+}
+
+/// Test whether `a` represents the field's multiplicative identity
+/// (Montgomery `1`). Returns `1` if so, else `0` (a plain integer; the
+/// `-(uint32_t)` wrapper turns it into the `0xFFFFFFFF`/`0` mask when
+/// downstream callers need it; here the only consumer is [`modqr`], which
+/// ORs the bit with [`modis0`]'s bit).
+///
+/// Mirrors the reference's
+/// `static int modis1(const spint *a)` at
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:317..329` exactly:
+///
+/// ```c
+/// static int modis1(const spint *a) {
+///   int i;
+///   spint c[5];
+///   spint c0;
+///   spint d = 0;
+///   redc(a, c);
+///   for (i = 1; i < 5; i++) {
+///     d |= c[i];
+///   }
+///   c0 = (spint)c[0];
+///   return ((spint)1 & ((d - (spint)1) >> 51u) &
+///           (((c0 ^ (spint)1) - (spint)1) >> 51u));
+/// }
+/// ```
+///
+/// Three faithfully reproduced subtleties:
+/// 1. `redc(a, c)` canonicalises any redundant representative to limbs
+///    below `2^51` with positional value below `p`. The canonical
+///    representative of Montgomery `1` is the positional `[1, 0, 0, 0,
+///    0]`, *not* the Montgomery [`MONTGOMERY_ONE`] (that's the
+///    Montgomery domain representative pre-`redc`); the OR-fold of `c[1
+///    ..= 4]` is `0` iff the canonical limbs 1..=4 are zero, the
+///    canonical-bounded property that makes the `(d - 1) >> 51 & 1`
+///    zero-detect trick correct.
+/// 2. The same zero-detect trick is then applied to `c[0] ^ 1`: this
+///    bit is `1` iff `c[0] == 1`. The combined AND is `1` iff every
+///    canonical limb 1..=4 is `0` AND `c[0] == 1`, i.e. iff `a == 1
+///    mod p`.
+/// 3. All arithmetic is unsigned `u64` wraparound (each `x.wrapping_sub(1)`
+///    underflows silently when `x == 0`, exactly as the reference's
+///    `spint == uint64_t`).
+fn modis1(a: &Fp) -> u32 {
+    let mut c: Fp = [0u64; NWORDS_FIELD];
+    redc(a, &mut c);
+    let mut d: u64 = 0;
+    for limb in c.iter().skip(1) {
+        d |= *limb;
+    }
+    let c0 = c[0];
+    let bit_d = (d.wrapping_sub(1) >> 51) & 1;
+    let bit_c0 = ((c0 ^ 1).wrapping_sub(1) >> 51) & 1;
+    (bit_d & bit_c0) as u32
+}
+
+/// Test whether `x` is a quadratic residue mod `p`. Returns `1` if so or
+/// if `x` represents the field zero (per the reference's contract: zero
+/// is conventionally treated as a square), else `0` (a plain integer;
+/// the public [`fp_is_square`] wrapper negates it to the
+/// `0xFFFFFFFF`/`0` mask).
+///
+/// Mirrors the reference's
+/// `static int modqr(const spint *h, const spint *x)` at
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:379..389` exactly:
+///
+/// ```c
+/// static int modqr(const spint *h, const spint *x) {
+///   spint r[5];
+///   if (h == NULL) {
+///     modpro(x, r);
+///     modsqr(r, r);
+///   } else {
+///     modsqr(h, r);
+///   }
+///   modmul(r, x, r);
+///   return modis1(r) | modis0(x);
+/// }
+/// ```
+///
+/// The Euler criterion in Montgomery form: `r = x^((p-1)/2) ==
+/// x^((p-3)/4 * 2) * x^1 == progenitor^2 * x` is `1` iff `x` is a non-zero
+/// square, `-1` iff `x` is a non-square, and `0` iff `x == 0`. The
+/// `modis1(r) | modis0(x)` OR returns `1` for both the square (`r == 1`)
+/// and the zero (`x == 0`) branches.
+///
+/// `h` is the optional precomputed progenitor of `x` (same role as in
+/// [`modinv`]); when `None`, the reference computes it via [`modpro`]
+/// and then squares it once, equivalent to `(x^((p-3)/4))^2 ==
+/// x^((p-3)/2)`. When `Some(h)`, the caller has already supplied
+/// `progenitor` and only one squaring is needed.
+///
+/// The [`modmul`] aliasing `modmul(r, x, r)` (output aliased with the
+/// first input) and `modsqr`'s in-place form are routed through a `tmp`
+/// scratch in the port for the same borrow-checker reason [`modpro`]
+/// scratches its aliased modmul/modsqr calls.
+fn modqr(h: Option<&Fp>, x: &Fp) -> u32 {
+    let mut r: Fp = [0u64; NWORDS_FIELD];
+    match h {
+        None => {
+            modpro(x, &mut r);
+            let src = r;
+            modsqr(&src, &mut r);
+        }
+        Some(h) => {
+            modsqr(h, &mut r);
+        }
+    }
+    {
+        let src = r;
+        modmul(&src, x, &mut r);
+    }
+    modis1(&r) | modis0(x)
+}
+
+/// Compute the square root `r = sqrt(x) mod p`, when one exists. Caller
+/// must use [`modqr`] to determine whether `x` is in fact a quadratic
+/// residue; on a non-residue, the returned value is meaningless garbage
+/// (the reference makes no defensive check, the port follows).
+///
+/// Mirrors the reference's
+/// `static void modsqrt(const spint *x, const spint *h, spint *r)` at
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:427..437` exactly:
+///
+/// ```c
+/// static void modsqrt(const spint *x, const spint *h, spint *r) {
+///   spint s[5];
+///   spint y[5];
+///   if (h == NULL) {
+///     modpro(x, y);
+///   } else {
+///     modcpy(h, y);
+///   }
+///   modmul(y, x, s);
+///   modcpy(s, r);
+/// }
+/// ```
+///
+/// `h` is the optional precomputed progenitor; when `None`, the port
+/// (mirroring the reference) computes it via [`modpro`]. The identity
+/// underpinning the construction is `progenitor(x) * x ==
+/// x^((p-3)/4) * x == x^((p+1)/4) == sqrt(x) mod p` (for `p == 3 mod 4`,
+/// the case that holds for `p5248`); a single [`modmul`] of the
+/// progenitor with `x` yields the root.
+///
+/// The `s`/`r` indirection in the reference (compute into `s`, then
+/// `modcpy(s, r);`) is preserved at the source level even though it
+/// reduces to a single buffer copy at the boundary; this is structurally
+/// the same pattern [`modqr`] uses for its `r` write.
+fn modsqrt(x: &Fp, h: Option<&Fp>, r: &mut Fp) {
+    let mut s: Fp = [0u64; NWORDS_FIELD];
+    let mut y: Fp = [0u64; NWORDS_FIELD];
+    match h {
+        None => modpro(x, &mut y),
+        Some(h) => y = *h,
+    }
+    modmul(&y, x, &mut s);
+    *r = s;
+}
+
+/// In-place left shift by `n < 51` bits across the five limbs of the
+/// redundant radix-2^51 layout. Mirrors the reference's
+/// `static void modshl(unsigned int n, spint *a)` at
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:440..447` exactly:
+///
+/// ```c
+/// static void modshl(unsigned int n, spint *a) {
+///   int i;
+///   a[4] = ((a[4] << n)) | (a[3] >> (51u - n));
+///   for (i = 3; i > 0; i--) {
+///     a[i] = ((a[i] << n) & (spint)0x7ffffffffffff) | (a[i - 1] >> (51u - n));
+///   }
+///   a[0] = (a[0] << n) & (spint)0x7ffffffffffff;
+/// }
+/// ```
+///
+/// Two faithfully reproduced subtleties:
+/// 1. Limb 4 is shifted *without* the per-limb mask (so any bits shifted
+///    above bit 50 stay in limb 4 unmasked); limbs 0..=3 are masked back
+///    down to 51 bits each, the same `MASK51` the column writes use.
+/// 2. The descending loop `for (i = 3; i > 0; i--)` ensures each `a[i]`
+///    is read for its low bits *after* its high bits have already been
+///    consumed by the previous iteration's write to `a[i+1]`; the port
+///    preserves the iteration order so the bit-for-bit correspondence
+///    is visible at the source level.
+///
+/// `n` is `unsigned int` in the reference (so `n == 0` produces an
+/// undefined-behaviour `51 - 0 == 51` shift on `u64`, which is in-range
+/// at exactly the type-width boundary; the reference's only caller
+/// [`modimp`] passes `8`, so `n == 0` is out of the contract and the
+/// port matches by passing `n` through to the same shifts without
+/// guard). The port takes `u32` for the same reason [`modshr`] does.
+fn modshl(n: u32, a: &mut Fp) {
+    a[4] = (a[4] << n) | (a[3] >> (51 - n));
+    for i in (1..=3).rev() {
+        a[i] = ((a[i] << n) & MASK51) | (a[i - 1] >> (51 - n));
+    }
+    a[0] = (a[0] << n) & MASK51;
+}
+
+/// In-place right shift by `n < 51` bits across the five limbs of the
+/// redundant radix-2^51 layout, returning the shifted-out low bits as a
+/// plain integer (the `a[0] & ((1 << n) - 1)` mask captured *before* the
+/// shift).
+///
+/// Mirrors the reference's
+/// `static int modshr(unsigned int n, spint *a)` at
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:450..458` exactly:
+///
+/// ```c
+/// static int modshr(unsigned int n, spint *a) {
+///   int i;
+///   spint r = a[0] & (((spint)1 << n) - (spint)1);
+///   for (i = 0; i < 4; i++) {
+///     a[i] = (a[i] >> n) | ((a[i + 1] << (51u - n)) & (spint)0x7ffffffffffff);
+///   }
+///   a[4] = a[4] >> n;
+///   return r;
+/// }
+/// ```
+///
+/// `n` is `unsigned int` in the reference; the port takes `u32`. The
+/// return is `int` in the reference; the port returns `u64` so the
+/// caller in [`fp_encode`] (which immediately downcasts to `u8`) can use
+/// the value directly without losing the low byte. The reference's
+/// `(int)r` truncation in the caller pattern is bit-equivalent to the
+/// port's `r as u8`.
+///
+/// Limb 4 is shifted without the per-limb mask (consistent with
+/// [`modshl`] and the limb-4-is-unmasked invariant `modmul`/`modsqr`
+/// leave behind); limbs 0..=3 OR in the high-bit-borrow from `a[i+1]`
+/// masked to 51 bits.
+fn modshr(n: u32, a: &mut Fp) -> u64 {
+    let r = a[0] & ((1u64 << n) - 1);
+    for i in 0..4 {
+        a[i] = (a[i] >> n) | ((a[i + 1] << (51 - n)) & MASK51);
+    }
+    a[4] >>= n;
+    r
+}
+
+/// Montgomery representative of `2^256 mod p` on the level-1 generic
+/// field, used by [`fp_decode_reduce`] to fold 32-byte blocks into a
+/// running accumulator (each preceding block is multiplied by `R2` to
+/// shift it `256` positional bits up before the next block is added).
+///
+/// Transcribed verbatim from the reference's
+/// `static const digit_t R2[NWORDS_FIELD]` at
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:544..548`:
+///
+/// ```c
+/// // Montgomery representation of 2^256
+/// static const digit_t R2[NWORDS_FIELD] = { 0x0001999999999eb8,
+///                                           0x0003333333333333,
+///                                           0x0006666666666666,
+///                                           0x0004cccccccccccc,
+///                                           0x0000199999999999 };
+/// ```
+///
+/// The constant is taken verbatim; no derivation is performed at the
+/// port. The bit-for-bit correspondence with the reference is the
+/// load-bearing property; the value-level identity that `R2 == 2^256 *
+/// R mod p` (where `R == 2^256` for the level-1 `RADIX_64` build, so
+/// `R2 == 2^512 mod p`, the Montgomery `R^2`) is what makes the chain
+/// `d = d * R2 + decode(block)` in [`fp_decode_reduce`] equivalent to
+/// the positional `d = d * 2^256 + value(block)` reduction.
+const R2: Fp = [
+    0x0001_9999_9999_9eb8,
+    0x0003_3333_3333_3333,
+    0x0006_6666_6666_6666,
+    0x0004_cccc_cccc_cccc,
+    0x0000_1999_9999_9999,
+];
+
+/// GF(p) modular exponentiation by `(p-3)/4` (the "progenitor" of `a`).
+///
+/// Mirrors the reference's `void fp_exp3div4(fp_t *out, const fp_t *a)`
+/// at `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:652..656`:
+///
+/// ```c
+/// void fp_exp3div4(fp_t *out, const fp_t *a) {
+///   modpro(*a, *out);
+/// }
+/// ```
+///
+/// A thin wrapper around the internal [`modpro`] (the hand-built fixed
+/// addition chain). Used by callers that need the progenitor explicitly
+/// to feed [`fp_inv`] or [`fp_sqrt`] with a precomputed `h` argument
+/// (the `Some(h)` branch of [`modinv`]/[`modsqrt`]) and amortise the
+/// progenitor cost.
+///
+/// As with the rest of the Montgomery-domain gf ports, the output is in
+/// the redundant `[0, 2p)` representation (limbs 0..=3 below `2^51`, limb
+/// 4 unmasked). The differential boundary records the raw five-limb
+/// output bit-for-bit against the reference's.
+pub fn fp_exp3div4(out: &mut Fp, a: &Fp) {
+    modpro(a, out);
+}
+
+/// GF(p) modular inverse, in place: `x <- x^-1 mod p`. On the field
+/// zero, the reference returns whatever Fermat would (since the chain
+/// computes `x^(p-2)`, an all-zero input squares-and-multiplies down to
+/// the canonical zero); the port mirrors that behaviour.
+///
+/// Mirrors the reference's `void fp_inv(fp_t *x)` at
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:628..632`:
+///
+/// ```c
+/// void fp_inv(fp_t *x) {
+///   modinv(*x, NULL, *x);
+/// }
+/// ```
+///
+/// The reference passes the same buffer as both input `x` and destination
+/// `z` of [`modinv`]; the underlying [`modmul`] tolerates this aliasing,
+/// but the Rust port resolves the borrow-checker conflict by snapshotting
+/// `x` into a local `input` and computing through that, then writing back
+/// to `x` from the [`modinv`] destination. The output is bit-equal to
+/// what the reference would have produced in place.
+///
+/// `h` is hard-coded to `None` at this boundary (matching the
+/// reference's `modinv(*x, NULL, *x)`), so [`modinv`] computes the
+/// progenitor internally via [`modpro`]. The `Some(h)` branch of
+/// [`modinv`] is exercised only by future callers that have a
+/// precomputed progenitor.
+pub fn fp_inv(x: &mut Fp) {
+    let input = *x;
+    modinv(&input, None, x);
+}
+
+/// GF(p) quadratic-residue predicate: returns the constant-time mask
+/// `0xFFFFFFFF` if `a` is a quadratic residue mod `p` (or the field
+/// zero), else `0`.
+///
+/// Mirrors the reference's `uint32_t fp_is_square(const fp_t *a)` at
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:634..638`:
+///
+/// ```c
+/// uint32_t fp_is_square(const fp_t *a) {
+///   return -(uint32_t)modqr(NULL, *a);
+/// }
+/// ```
+///
+/// The `-(uint32_t)` cast turns [`modqr`]'s `{0, 1}` return into the
+/// `0xFFFFFFFF`/`0` mask the rest of the codebase consumes (the same
+/// negation [`fp_is_zero`] and [`fp_is_equal`] use). `h` is hard-coded
+/// to `None` (the reference's `modqr(NULL, *a)`), so [`modqr`] computes
+/// the progenitor internally.
+///
+/// Per the reference, the field zero is treated as a square (the
+/// `modis0(x)` branch of [`modqr`]'s final OR returns `1` on zero); the
+/// port matches.
+pub fn fp_is_square(a: &Fp) -> u32 {
+    0u32.wrapping_sub(modqr(None, a))
+}
+
+/// GF(p) modular square root, in place: `a <- sqrt(a) mod p` for the
+/// caller's chosen branch. On a non-residue input, the returned value is
+/// meaningless garbage (the reference makes no defensive check; the port
+/// follows). Caller should first test with [`fp_is_square`].
+///
+/// Mirrors the reference's `void fp_sqrt(fp_t *a)` at
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:640..644`:
+///
+/// ```c
+/// void fp_sqrt(fp_t *a) {
+///   modsqrt(*a, NULL, *a);
+/// }
+/// ```
+///
+/// The reference passes the same buffer as both input `x` and destination
+/// `r` of [`modsqrt`]; the underlying [`modmul`] tolerates this aliasing,
+/// but the Rust port resolves the borrow-checker conflict by
+/// snapshotting `a` into a local `input` and writing the result back into
+/// `a`. The output is bit-equal to what the reference would have produced
+/// in place.
+///
+/// `h` is hard-coded to `None` (the reference's `modsqrt(*a, NULL,
+/// *a)`), so [`modsqrt`] computes the progenitor internally via
+/// [`modpro`].
+pub fn fp_sqrt(a: &mut Fp) {
+    let input = *a;
+    modsqrt(&input, None, a);
+}
+
+/// GF(p) canonical serialization to 32 little-endian bytes.
+///
+/// Mirrors the reference's `void fp_encode(void *dst, const fp_t *a)`
+/// at `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:664..675`:
+///
+/// ```c
+/// void fp_encode(void *dst, const fp_t *a) {
+///   int i;
+///   spint c[5];
+///   redc(*a, c);
+///   for (i = 0; i < 32; i++) {
+///     ((char *)dst)[i] = c[0] & (spint)0xff;
+///     (void)modshr(8, c);
+///   }
+/// }
+/// ```
+///
+/// The reference's `modexp`-derived path: [`redc`] the Montgomery
+/// representative to its canonical positional form, then iteratively
+/// peel off the low byte of limb 0 and right-shift the five-limb value
+/// by 8 bits (the [`modshr`] call), 32 times in total. The output is the
+/// 32-byte little-endian encoding of the canonical residue mod `p`.
+///
+/// The destination buffer must be exactly 32 bytes; the port's `&mut
+/// [u8; 32]` is the Rust analogue of the reference's `void *dst` (the
+/// reference does no bounds check, the port takes a fixed-size array
+/// reference so the contract is encoded in the type).
+pub fn fp_encode(dst: &mut [u8; 32], a: &Fp) {
+    let mut c: Fp = [0u64; NWORDS_FIELD];
+    redc(a, &mut c);
+    for byte in dst.iter_mut() {
+        *byte = (c[0] & 0xff) as u8;
+        let _ = modshr(8, &mut c);
+    }
+}
+
+/// GF(p) canonical deserialization from 32 little-endian bytes. Returns
+/// the constant-time mask `0xFFFFFFFF` if the decoded value was in the
+/// canonical range `[0, p)`, else `0` (in the non-canonical case, the
+/// output `d` is zeroed). Mirrors the reference's `uint32_t
+/// fp_decode(fp_t *d, const void *src)` at
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:677..698`:
+///
+/// ```c
+/// uint32_t fp_decode(fp_t *d, const void *src) {
+///   int i;
+///   spint res;
+///   const unsigned char *b = src;
+///   for (i = 0; i < 5; i++) {
+///     (*d)[i] = 0;
+///   }
+///   for (i = 31; i >= 0; i--) {
+///     modshl(8, *d);
+///     (*d)[0] += (spint)b[i];
+///   }
+///   res = (spint)-modfsb(*d);
+///   nres(*d, *d);
+///   // If the value was canonical then res = -1; otherwise, res = 0
+///   for (i = 0; i < 5; i++) {
+///     (*d)[i] &= res;
+///   }
+///   return (uint32_t)res;
+/// }
+/// ```
+///
+/// Three faithfully reproduced subtleties:
+/// 1. The byte-by-byte input is folded in descending address order
+///    (`for (i = 31; i >= 0; i--)`): each iteration shifts the running
+///    `d` left by 8 bits via [`modshl`] then adds the byte at the next
+///    descending input position into `d[0]`. The cumulative effect is
+///    `d = sum(b[i] << (8 * i)) for i in 0..32`, the little-endian
+///    positional decoding.
+/// 2. [`modfsb`] returns `1` if the decoded value is below `p` (the
+///    trial subtraction was undone) and `0` otherwise. The reference
+///    takes that as a `spint == uint64_t`, negates it
+///    (`(spint)-modfsb(*d)`), so the result is `0xffff_ffff_ffff_ffff`
+///    on the canonical-in-range branch and `0` on the out-of-range
+///    branch. The port reproduces this via `0u64.wrapping_sub(...)`.
+/// 3. [`nres`] is called *after* the canonical-range check but *before*
+///    the per-limb `& res` mask: the limbs of `d` therefore hold the
+///    Montgomery representative of the canonical value when `res ==
+///    -1`, and arbitrary [`nres`] output (irrelevant) when `res == 0`,
+///    which the subsequent `& res` zeroes out. The returned `uint32_t`
+///    is the low 32 bits of the `spint` `res`: `0xffff_ffff` on canonical,
+///    `0` on out-of-range.
+pub fn fp_decode(d: &mut Fp, src: &[u8; 32]) -> u32 {
+    for limb in d.iter_mut() {
+        *limb = 0;
+    }
+    for i in (0..32).rev() {
+        modshl(8, d);
+        d[0] = d[0].wrapping_add(src[i] as u64);
+    }
+    let res = 0u64.wrapping_sub(modfsb(d) as u64);
+    let input = *d;
+    nres(&input, d);
+    for limb in d.iter_mut() {
+        *limb &= res;
+    }
+    res as u32
+}
+
+/// 8-bit add-with-carry on two `u64`s, producing one `u64` sum and the
+/// outgoing carry bit. Mirrors the reference's
+/// `static inline unsigned char add_carry(unsigned char cc, spint a,
+/// spint b, spint *d)` at
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:700..706` exactly:
+///
+/// ```c
+/// static inline unsigned char
+/// add_carry(unsigned char cc, spint a, spint b, spint *d) {
+///   udpint t = (udpint)a + (udpint)b + cc;
+///   *d = (spint)t;
+///   return (unsigned char)(t >> Wordlength);
+/// }
+/// ```
+///
+/// `udpint == __uint128_t`, so the sum fits without overflow; the low 64
+/// bits go to `d` and the high bit (one of `Wordlength == 64`) is the
+/// outgoing carry. Used by [`partial_reduce`] to fold the high 8 bits of
+/// a 256-bit value into the low 248 bits without losing precision.
+fn add_carry(cc: u8, a: u64, b: u64, d: &mut u64) -> u8 {
+    let t: u128 = (a as u128).wrapping_add(b as u128).wrapping_add(cc as u128);
+    *d = t as u64;
+    (t >> 64) as u8
+}
+
+/// Reduce a 256-bit value to a 248-bit value congruent mod `p == 5 *
+/// 2^248 - 1`, in place on a four-`u64` array (NOT the Montgomery 5-limb
+/// form). Mirrors the reference's
+/// `static void partial_reduce(spint *out, const spint *src)` at
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:708..726` exactly:
+///
+/// ```c
+/// static void partial_reduce(spint *out, const spint *src) {
+///   spint h, l, quo, rem;
+///   unsigned char cc;
+///   // Split value in high (8 bits) and low (248 bits) parts.
+///   h = src[3] >> 56;
+///   l = src[3] & 0x00FFFFFFFFFFFFFF;
+///   // 5*2^248 = 1 mod q; hence, we add floor(h/5) + (h mod 5)*2^248
+///   // to the low part.
+///   quo = (h * 0xCD) >> 10;
+///   rem = h - (5 * quo);
+///   cc = add_carry(0, src[0], quo, &out[0]);
+///   cc = add_carry(cc, src[1], 0, &out[1]);
+///   cc = add_carry(cc, src[2], 0, &out[2]);
+///   (void)add_carry(cc, l, rem << 56, &out[3]);
+/// }
+/// ```
+///
+/// The level-1 prime's defining identity `5 * 2^248 == 1 mod p` is the
+/// crux: any value `(h << 248) + l` (where `h` is the top 8 bits and `l`
+/// is the low 248 bits) reduces to `floor(h / 5) + (h mod 5) * 2^248 + l`
+/// mod `p`. The `(h * 0xCD) >> 10` is a fixed-point reciprocal estimate
+/// for `floor(h / 5)` exact for `h < 256` (`0xCD == 205 ≈ 1024 / 5`).
+///
+/// This helper operates on a 4-limb 256-bit plain integer (NOT the
+/// 5-limb Montgomery `Fp`). It is internal to [`fp_decode_reduce`]'s
+/// per-block fold: a 32-byte input block is decoded into four `u64`s
+/// little-endian, [`partial_reduce`]'d to a 248-bit equivalent, and then
+/// re-encoded to 32 bytes for [`fp_decode`] (which expects a canonical
+/// value below `p`).
+///
+/// In-place is permitted: `out` may alias `src` (the reference's
+/// `partial_reduce(t, t)` exercises this; the per-element add-carry
+/// chain reads `src[i]` before writing `out[i]`, so aliasing is safe).
+/// The port handles aliasing via a four-limb snapshot copy (Rust's
+/// borrow checker would reject the literal aliased call).
+fn partial_reduce(out: &mut [u64; 4], src: &[u64; 4]) {
+    let snap = *src;
+    let h: u64 = snap[3] >> 56;
+    let l: u64 = snap[3] & 0x00FF_FFFF_FFFF_FFFF;
+    let quo: u64 = (h.wrapping_mul(0xCD)) >> 10;
+    let rem: u64 = h.wrapping_sub(5u64.wrapping_mul(quo));
+    let mut cc = add_carry(0, snap[0], quo, &mut out[0]);
+    cc = add_carry(cc, snap[1], 0, &mut out[1]);
+    cc = add_carry(cc, snap[2], 0, &mut out[2]);
+    let _ = add_carry(cc, l, rem << 56, &mut out[3]);
+}
+
+/// Little-endian decoding of an 8-byte slice as a `u64`. Mirrors the
+/// reference's
+/// `static inline uint64_t dec64le(const void *src)` at
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:743..750` exactly.
+/// `u64::from_le_bytes` is the same bit pattern; the port spells out
+/// the shift-and-OR chain in the same form the reference does so the
+/// source-level correspondence is visible at a glance.
+fn dec64le(src: &[u8]) -> u64 {
+    (src[0] as u64)
+        | ((src[1] as u64) << 8)
+        | ((src[2] as u64) << 16)
+        | ((src[3] as u64) << 24)
+        | ((src[4] as u64) << 32)
+        | ((src[5] as u64) << 40)
+        | ((src[6] as u64) << 48)
+        | ((src[7] as u64) << 56)
+}
+
+/// Little-endian encoding of a `u64` as an 8-byte slice. Mirrors the
+/// reference's
+/// `static inline void enc64le(void *dst, uint64_t x)` at
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:729..741` exactly.
+/// `x.to_le_bytes()` is the same bit pattern; the port spells out the
+/// individual byte writes in the same form the reference does so the
+/// source-level correspondence is visible at a glance.
+fn enc64le(dst: &mut [u8], x: u64) {
+    dst[0] = x as u8;
+    dst[1] = (x >> 8) as u8;
+    dst[2] = (x >> 16) as u8;
+    dst[3] = (x >> 24) as u8;
+    dst[4] = (x >> 32) as u8;
+    dst[5] = (x >> 40) as u8;
+    dst[6] = (x >> 48) as u8;
+    dst[7] = (x >> 56) as u8;
+}
+
+/// GF(p) deserialization-and-reduction from an arbitrary-length byte
+/// slice. Mirrors the reference's
+/// `void fp_decode_reduce(fp_t *d, const void *src, size_t len)` at
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:752..791` exactly:
+///
+/// ```c
+/// void fp_decode_reduce(fp_t *d, const void *src, size_t len) {
+///   uint64_t t[4];   // Stores Nbytes * 8 bits
+///   uint8_t tmp[32]; // Nbytes
+///   const uint8_t *b = src;
+///   fp_set_zero(d);
+///   if (len == 0) {
+///     return;
+///   }
+///   size_t rem = len % 32;
+///   if (rem != 0) {
+///     // Input size is not a multiple of 32, we decode a partial
+///     // block, which is already less than 2^248.
+///     size_t k = len - rem;
+///     memcpy(tmp, b + k, len - k);
+///     memset(tmp + len - k, 0, (sizeof tmp) - (len - k));
+///     fp_decode(d, tmp);
+///     len = k;
+///   }
+///   // Process all remaining blocks, in descending address order.
+///   while (len > 0) {
+///     fp_mul(d, d, &R2);
+///     len -= 32;
+///     t[0] = dec64le(b + len);
+///     t[1] = dec64le(b + len + 8);
+///     t[2] = dec64le(b + len + 16);
+///     t[3] = dec64le(b + len + 24);
+///     partial_reduce(t, t);
+///     enc64le(tmp, t[0]);
+///     enc64le(tmp + 8, t[1]);
+///     enc64le(tmp + 16, t[2]);
+///     enc64le(tmp + 24, t[3]);
+///     fp_t a;
+///     fp_decode(&a, tmp);
+///     fp_add(d, d, &a);
+///   }
+/// }
+/// ```
+///
+/// Two-phase reduction:
+/// 1. **Partial-block prefix.** If `len % 32 != 0`, the trailing partial
+///    block (at most 31 bytes) is decoded into `d` via [`fp_decode`]
+///    after zero-padding to 32 bytes. The partial block's value is below
+///    `2^248 < p`, so the canonical-range check inside [`fp_decode`]
+///    always succeeds and `d` is its Montgomery representative.
+/// 2. **Full-block descending fold.** Each preceding 32-byte block is
+///    decoded via [`partial_reduce`] (the level-1 prime's `5 * 2^248 ==
+///    1 mod p` identity is the reduction kernel), re-encoded to 32 bytes
+///    in canonical form, decoded via [`fp_decode`], and added to `d`
+///    *after* `d` has been multiplied by `R2 == 2^256 mod p` (which
+///    shifts the running accumulator up by one block's worth of
+///    positional bits).
+///
+/// The `R2` constant carries the Montgomery factor: positionally, `d *
+/// R2 == d * 2^256 mod p`, exactly the block-shift the descending fold
+/// needs. Combined with the partial-block prefix, the final `d` is the
+/// Montgomery representative of the full input's residue mod `p`. The
+/// reference's [`fp_decode`] call discards its return value (the
+/// canonical-range check is guaranteed by the partial-block bound and
+/// by the [`partial_reduce`] guarantee that the re-encoded block is also
+/// below `p`); the port follows by ignoring the return.
+pub fn fp_decode_reduce(d: &mut Fp, src: &[u8]) {
+    let mut tmp: [u8; 32] = [0u8; 32];
+    fp_set_zero(d);
+    let mut len = src.len();
+    if len == 0 {
+        return;
+    }
+    let rem = len % 32;
+    if rem != 0 {
+        let k = len - rem;
+        tmp[..(len - k)].copy_from_slice(&src[k..len]);
+        for byte in tmp.iter_mut().skip(len - k) {
+            *byte = 0;
+        }
+        let _ = fp_decode(d, &tmp);
+        len = k;
+    }
+    while len > 0 {
+        let mut prod: Fp = [0u64; NWORDS_FIELD];
+        fp_mul(&mut prod, d, &R2);
+        *d = prod;
+        len -= 32;
+        let mut t: [u64; 4] = [0u64; 4];
+        t[0] = dec64le(&src[len..(len + 8)]);
+        t[1] = dec64le(&src[(len + 8)..(len + 16)]);
+        t[2] = dec64le(&src[(len + 16)..(len + 24)]);
+        t[3] = dec64le(&src[(len + 24)..(len + 32)]);
+        let snap = t;
+        partial_reduce(&mut t, &snap);
+        enc64le(&mut tmp[0..8], t[0]);
+        enc64le(&mut tmp[8..16], t[1]);
+        enc64le(&mut tmp[16..24], t[2]);
+        enc64le(&mut tmp[24..32], t[3]);
+        let mut a: Fp = [0u64; NWORDS_FIELD];
+        let _ = fp_decode(&mut a, &tmp);
+        let mut sum: Fp = [0u64; NWORDS_FIELD];
+        fp_add(&mut sum, d, &a);
+        *d = sum;
+    }
 }
 
 #[cfg(test)]
