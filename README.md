@@ -177,18 +177,14 @@ crates/
   sqisign-sign/        protocols_keygen, protocols_sign, secret-key serialization
   sqisign-ffi/         C ABI cdylib + staticlib (verify + sign + keygen)
   sqisign/             top-level meta-crate
-  sqisign-vectors/     differential-vector loader (used only by tests)
 
-tools/
-  cdump/               C program that dumps deterministic test vectors;
-                       links against an external upstream checkout, path
-                       supplied via -DSQISIGN_UPSTREAM_REF or UPSTREAM_REF
-  vector-gen/          Rust program that converts cdump output to JSON
-  gen-vectors.sh       regenerate every vector from the C reference
+vectors/               compile-time precomputed cryptographic constants
+                       (EXTREMAL_ORDERS, TORSION_PLUS_2POWER, etc.),
+                       embedded by sqisign-precomp via include_str!.
+                       These are runtime data, not test fixtures.
 
-vectors/               committed reference vectors, organised by module
-kat/                   carried copy of the upstream lvl1 KAT response file
-                       (used directly by crates/sqisign-sign/tests/kat_sign.rs)
+kat/                   carried copy of the upstream lvl1 KAT response file,
+                       used directly by the KAT round-trip tests.
 ```
 
 The `sqisign-verify` crate is deliberately small: a Katzenpost mix node
@@ -213,10 +209,9 @@ function as the upstream C reference.
 ### The upstream pin
 
 The C reference at <https://github.com/SQISign/the-sqisign> is pinned
-to a single commit in `UPSTREAM.md`. Every test vector records that
-same commit hash in its `upstream_commit` field; CI clones upstream at
-the recorded hash and regenerates the vectors to confirm they match
-byte-for-byte. To inspect the pin:
+to a single commit in `UPSTREAM.md`. The lvl1 KAT response file we
+carry at `kat/PQCsignKAT_353_SQIsign_lvl1.rsp` is a byte copy of that
+upstream's KAT at the pinned commit. To inspect the pin:
 
 ```sh
 cat UPSTREAM.md
@@ -230,48 +225,25 @@ git -C /tmp/the-sqisign checkout \
   $(grep -oE '`[0-9a-f]{40}`' UPSTREAM.md | head -1 | tr -d '`')
 ```
 
-### Differential test vectors
+### What `vectors/` actually contains
 
-Every primitive (~262 boundaries at the time of writing) is witnessed
-by a JSON file of input/output pairs that were dumped from the pinned
-C reference. The convention is:
+The `vectors/precomp/` directory holds JSON files for the lvl1
+precomputed cryptographic constants (`EXTREMAL_ORDERS`,
+`TORSION_PLUS_2POWER`, `CURVES_WITH_ENDOMORPHISMS`, etc.). These are
+**runtime data**, not test fixtures: `sqisign-precomp` embeds them at
+compile time via `include_str!` and parses them once at process
+startup. They are byte-encodings of constants that the upstream C
+reference ships as large initialised arrays in
+`src/precomp/ref/lvl1/quaternion_data.c` and friends. Carrying them as
+canonical-bytes JSON keeps them auditable: a reviewer can read each
+constant out of the JSON and reproduce it from the upstream by hand.
 
-- The C harness in `tools/cdump/` exposes each upstream function as
-  a deterministic battery: a fixed-seed driver builds inputs, calls
-  the upstream function, and emits a binary record containing
-  canonical bytes of the inputs and outputs.
-- The Rust program `tools/vector-gen/` converts that binary into a
-  JSON file under `vectors/<module>/<boundary>.json`. Each JSON
-  records the upstream commit hash, a `generated_at` timestamp (fixed
-  to the pin date, not wall-clock), and a list of vectors with
-  canonical bytes for every named field.
-- Each Rust crate has a per-boundary test file (e.g.
-  `crates/sqisign-quaternion/tests/quat_lll_core_vectors.rs`) that
-  loads the JSON, replays the inputs through the Rust port, and
-  asserts byte-equality with the recorded output.
-
-To reproduce the vectors from a clean checkout:
-
-```sh
-git clone https://github.com/SQISign/the-sqisign /tmp/the-sqisign
-git -C /tmp/the-sqisign checkout \
-  $(grep -oE '`[0-9a-f]{40}`' UPSTREAM.md | head -1 | tr -d '`')
-UPSTREAM_REF=/tmp/the-sqisign ./tools/gen-vectors.sh
-git status vectors/                  # should be clean
-```
-
-The `./tools/gen-vectors.sh` script regenerates every committed JSON
-file. Because the harness uses fixed seeds and `generated_at` is taken
-from `UPSTREAM.md` rather than the current clock, a clean rerun is
-byte-identical to the committed JSON. A non-empty `git status
-vectors/` after running it means the pinned commit, the harness, or
-the vector format drifted; CI runs the same comparison.
-
-To run the full per-boundary differential suite:
-
-```sh
-cargo test --workspace                  # exercises every committed vector
-```
+There is no `tools/cdump` differential-vector harness, no per-boundary
+replay tests, and no large `vectors/` tree of per-primitive samples in
+this repository. An earlier development phase had all of those; once
+the port reached byte-for-byte KAT parity with the upstream they were
+no longer earning their disk cost relative to the KAT witness below,
+so they were dropped.
 
 ### KAT round-trip
 
@@ -307,17 +279,16 @@ is detected at the byte level.
    the ones quoted in any paper, advisory, or release note you trust.
    Then, in a separate clone of <https://github.com/SQISign/the-sqisign>,
    `git rev-parse HEAD` and confirm it matches.
-2. **Vector reproducibility.** Run `./tools/gen-vectors.sh` from a
-   clean checkout; `git status vectors/` must be clean afterwards. A
-   diff there means the C harness, the vendored upstream, or the
-   vector format silently changed.
-3. **Per-boundary parity.** Run `cargo test --workspace`. Every
-   committed vector must pass; a failure means the corresponding Rust
-   port has diverged from the C reference at that primitive.
-4. **End-to-end parity.** Run `cargo test -p sqisign-sign --release
+2. **KAT file parity.** Diff `kat/PQCsignKAT_353_SQIsign_lvl1.rsp`
+   against the upstream's own
+   `KAT/PQCsignKAT_353_SQIsign_lvl1.rsp` at the pinned commit. They
+   must be byte-identical; that is the input to the round-trip test
+   and any drift invalidates the witness.
+3. **End-to-end parity.** Run `cargo test -p sqisign-sign --release
    -- --ignored kat_lvl1_full`. Every one of the 100 KAT round-trips
-   must match byte-for-byte.
-5. **Spot audit.** Pick one or two boundaries (the LLL reducer in
+   must match byte-for-byte. This is the strongest correctness
+   witness in the repository.
+4. **Spot audit.** Pick one or two boundaries (the LLL reducer in
    `crates/sqisign-quaternion/src/lll.rs` and the rejection sampler
    in `crates/sqisign-quaternion/src/lat_ball.rs` are good choices)
    and read the Rust source side-by-side with, in your separate
@@ -327,8 +298,9 @@ is detected at the byte level.
    reference's control flow line-for-line where feasible, which is
    what makes that kind of diff readable.
 
-None of these by themselves rules out a subtle bug; together they
-narrow the search.
+The KAT is the load-bearing witness. A bug that affects a code path
+the KAT does not exercise would slip past steps 2-3; step 4 is the
+mitigation, and it depends on the reviewer's diligence.
 
 ## Provenance
 

@@ -12,7 +12,6 @@ sqisign-gf.workspace = true
 sqisign-mp.workspace = true
 
 [dev-dependencies]
-sqisign-vectors.workspace = true
 hex.workspace = true
 proptest.workspace = true
 criterion.workspace = true

@@ -879,7 +879,6 @@ version = "0.0.0"
 dependencies = [
  "hex",
  "sqisign-sign",
- "sqisign-vectors",
  "sqisign-verify",
 ]
 
@@ -892,7 +891,6 @@ dependencies = [
  "hex",
  "proptest",
  "sha3",
- "sqisign-vectors",
  "zeroize",
 ]
 
@@ -906,7 +904,6 @@ dependencies = [
  "sqisign-common",
  "sqisign-gf",
  "sqisign-mp",
- "sqisign-vectors",
 ]
 
 [[package]]
@@ -926,7 +923,6 @@ dependencies = [
  "criterion",
  "hex",
  "proptest",
- "sqisign-vectors",
 ]
 
 [[package]]
@@ -937,7 +933,6 @@ dependencies = [
  "sqisign-common",
  "sqisign-ec",
  "sqisign-gf",
- "sqisign-vectors",
 ]
 
 [[package]]
@@ -954,7 +949,6 @@ dependencies = [
  "sqisign-mp",
  "sqisign-precomp",
  "sqisign-quaternion",
- "sqisign-vectors",
 ]
 
 [[package]]
@@ -964,7 +958,6 @@ dependencies = [
  "criterion",
  "hex",
  "proptest",
- "sqisign-vectors",
 ]
 
 [[package]]
@@ -977,7 +970,6 @@ dependencies = [
  "sqisign-ec",
  "sqisign-gf",
  "sqisign-quaternion",
- "sqisign-vectors",
 ]
 
 [[package]]
@@ -992,7 +984,6 @@ dependencies = [
  "proptest",
  "sqisign-common",
  "sqisign-mp",
- "sqisign-vectors",
 ]
 
 [[package]]
@@ -1010,17 +1001,7 @@ dependencies = [
  "sqisign-mp",
  "sqisign-precomp",
  "sqisign-quaternion",
- "sqisign-vectors",
  "sqisign-verify",
-]
-
-[[package]]
-name = "sqisign-vectors"
-version = "0.0.0"
-dependencies = [
- "hex",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -1038,7 +1019,6 @@ dependencies = [
  "sqisign-mp",
  "sqisign-precomp",
  "sqisign-quaternion",
- "sqisign-vectors",
 ]
 
 [[package]]
@@ -1098,16 +1078,6 @@ name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
-
-[[package]]
-name = "vector-gen"
-version = "0.0.0"
-dependencies = [
- "hex",
- "serde",
- "serde_json",
- "sqisign-vectors",
-]
 
 [[package]]
 name = "version_check"

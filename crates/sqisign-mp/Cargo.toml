@@ -13,7 +13,6 @@ description = "SQIsign multiprecision integer arithmetic: fixed-width little-end
 [dependencies]
 
 [dev-dependencies]
-sqisign-vectors.workspace = true
 hex.workspace = true
 proptest.workspace = true
 criterion.workspace = true

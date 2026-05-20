@@ -16,5 +16,4 @@ sqisign-verify.workspace = true
 sqisign-sign = { workspace = true, optional = true }
 
 [dev-dependencies]
-sqisign-vectors.workspace = true
 hex.workspace = true

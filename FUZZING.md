@@ -6,11 +6,10 @@ C reference), and asserts bit-equal behaviour. Any divergence is a P0 bug.
 
 ## Status: harnesses ship, runner deferred
 
-`cargo-fuzz` and libFuzzer are not installed in the current environment,
-exactly as `valgrind`/`iai-callgrind` are not (see BENCHMARKS.md). This is
-recorded, not silently dropped: the fuzz **harnesses are committed and
-build**; only the *running* is deferred to a fuzzing host with the
-toolchain.
+`cargo-fuzz` and libFuzzer are not installed in the current
+environment. This is recorded, not silently dropped: the fuzz
+**harnesses are committed and build**; only the *running* is deferred
+to a fuzzing host with the toolchain.
 
 | Crate | Target | Asserts today | Next increment |
 |---|---|---|---|

@@ -16,7 +16,6 @@ sqisign-precomp.workspace = true
 sqisign-quaternion.workspace = true
 
 [dev-dependencies]
-sqisign-vectors.workspace = true
 hex.workspace = true
 proptest.workspace = true
 criterion.workspace = true
