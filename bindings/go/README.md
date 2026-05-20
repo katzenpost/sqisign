@@ -15,10 +15,20 @@ cd bindings/go && go test ./sqisign/...
 ```
 
 The first command produces `target/release/libsqisign_ffi.a`; the
-`#cgo LDFLAGS:` directive in `sqisign/sqisign.go` picks it up by
-relative path. If you move this binding outside the workspace, edit
-that directive or set `CGO_LDFLAGS` to point at wherever you placed
-the staticlib.
+`#cgo LDFLAGS:` directive in `sqisign/sqisign.go` picks it up by a
+path relative to the binding's source directory.
+
+The cgo header (`sqisign.h`) is vendored alongside the binding so
+the include resolves cleanly whether the binding is consumed in-tree
+or from Go's module cache. The companion staticlib path, however, is
+still a `${SRCDIR}/../../../target/release/...` reference that only
+exists for in-tree builds; consumers who pull this module via
+`go get` and want to actually link against it must either copy the
+prebuilt `libsqisign_ffi.a` into the expected location, override the
+binding's `CGO_LDFLAGS` directive, or vendor the binding into their
+own tree where the path resolves. Solving the staticlib-distribution
+question more thoroughly (env-driven `-L`, pkg-config, or per-arch
+release artifacts) is left as future work.
 
 ## Randomness
 
