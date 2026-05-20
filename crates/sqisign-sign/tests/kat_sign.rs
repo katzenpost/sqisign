@@ -1,11 +1,12 @@
 //! KAT round-trip test for SQIsign lvl1.
 //!
 //! Replays the recorded NIST KAT response file
-//! `vendor/the-sqisign/KAT/PQCsignKAT_353_SQIsign_lvl1.rsp` against the
-//! Rust port. Each entry seeds a fresh [`CtrDrbg`] with the recorded
-//! 48-byte entropy, runs [`protocols_keygen`] followed by
-//! [`protocols_sign`], and compares the serialized public key, secret
-//! key, and signed message against the recorded bytes.
+//! `kat/PQCsignKAT_353_SQIsign_lvl1.rsp` (a carry of the upstream-released
+//! file at the pinned commit, see `UPSTREAM.md`) against the Rust port.
+//! Each entry seeds a fresh [`CtrDrbg`] with the recorded 48-byte
+//! entropy, runs [`protocols_keygen`] followed by [`protocols_sign`],
+//! and compares the serialized public key, secret key, and signed
+//! message against the recorded bytes.
 //!
 //! The test is `#[ignore]`d by default so it does not run in routine
 //! `cargo test` invocations: each entry can take several seconds, and a
@@ -26,7 +27,7 @@ fn kat_path() -> PathBuf {
     let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     p.push("..");
     p.push("..");
-    p.push("vendor/the-sqisign/KAT/PQCsignKAT_353_SQIsign_lvl1.rsp");
+    p.push("kat/PQCsignKAT_353_SQIsign_lvl1.rsp");
     p
 }
 
