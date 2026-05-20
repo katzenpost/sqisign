@@ -10,7 +10,15 @@ description = "SQIsign precomputed constants, copied verbatim from the reference
 sqisign-common.workspace = true
 sqisign-gf.workspace = true
 sqisign-ec.workspace = true
+sqisign-quaternion.workspace = true
+# The lvl1 precomputed-constant tables come from offline Sage scripts and
+# are committed only in canonical-bytes JSON form under vectors/precomp/.
+# At startup the crate decodes the embedded JSON via LazyLock once per
+# process and reconstructs the typed values. serde_json and hex live here
+# as ordinary runtime deps because the JSON is `include_str!`'d into the
+# binary; no filesystem access happens at runtime.
+serde_json.workspace = true
+hex.workspace = true
 
 [dev-dependencies]
 sqisign-vectors.workspace = true
-hex.workspace = true

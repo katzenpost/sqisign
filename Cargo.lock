@@ -967,9 +967,11 @@ name = "sqisign-precomp"
 version = "0.0.0"
 dependencies = [
  "hex",
+ "serde_json",
  "sqisign-common",
  "sqisign-ec",
  "sqisign-gf",
+ "sqisign-quaternion",
  "sqisign-vectors",
 ]
 

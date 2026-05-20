@@ -1,0 +1,17 @@
+{
+  "boundary": "sqisign_precomp::TORSION_PLUS_2POWER",
+  "generated_at": "2026-05-17T00:00:00Z",
+  "rng_seed": "0x9e3779b97f4a7c15",
+  "schema_version": 1,
+  "security_level": 1,
+  "upstream_commit": "dd133d7aca576c361a270c8e6434832535b42ecc",
+  "vectors": [
+    {
+      "id": 0,
+      "inputs": {},
+      "outputs": {
+        "value": "0x00200000000100000000000000000000000000000000000000000000000000000000000000"
+      }
+    }
+  ]
+}
