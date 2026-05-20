@@ -333,8 +333,7 @@ pub unsafe extern "C" fn sqisign_lvl1_sign(
 /// `context` is an opaque value the FFI threads through unchanged;
 /// callers typically use it to carry a pointer to RNG state through
 /// the C boundary (e.g. a Go `gopointer.Save` handle).
-pub type SqisignFillRandomFn =
-    unsafe extern "C" fn(out: *mut u8, len: usize, context: usize);
+pub type SqisignFillRandomFn = unsafe extern "C" fn(out: *mut u8, len: usize, context: usize);
 
 /// Bridge from a C function pointer to the workspace's [`RngSource`]
 /// trait. Holds no state of its own beyond the callback and context.
@@ -441,7 +440,9 @@ pub unsafe extern "C" fn sqisign_lvl1_keygen_with_rng(
     if pk.is_null() || sk.is_null() {
         return 0;
     }
-    let Some(callback) = fill_random else { return 0 };
+    let Some(callback) = fill_random else {
+        return 0;
+    };
 
     let result = panic::catch_unwind(AssertUnwindSafe(|| {
         let mut rng = CallbackRng {
@@ -505,7 +506,9 @@ pub unsafe extern "C" fn sqisign_lvl1_sign_with_rng(
     if msg.is_null() && msg_len != 0 {
         return 0;
     }
-    let Some(callback) = fill_random else { return 0 };
+    let Some(callback) = fill_random else {
+        return 0;
+    };
 
     let sk_slice = unsafe { core::slice::from_raw_parts(sk, sk_len) };
     let msg_slice: &[u8] = if msg_len == 0 {
@@ -613,7 +616,14 @@ mod tests {
         let mut pk = [0u8; SQISIGN_LVL1_PUBLIC_KEY_BYTES];
         let mut sk = [0u8; SQISIGN_LVL1_SECRET_KEY_BYTES];
         let r = unsafe {
-            sqisign_lvl1_keygen_with_rng(pk.as_mut_ptr(), pk.len(), sk.as_mut_ptr(), sk.len(), None, 0)
+            sqisign_lvl1_keygen_with_rng(
+                pk.as_mut_ptr(),
+                pk.len(),
+                sk.as_mut_ptr(),
+                sk.len(),
+                None,
+                0,
+            )
         };
         assert_eq!(r, 0);
     }
@@ -702,7 +712,13 @@ mod tests {
             )
         };
         assert_eq!(r, 1);
-        assert_eq!(pk_a, pk_b, "callback keygen pk diverged from entropy keygen pk");
-        assert_eq!(sk_a, sk_b, "callback keygen sk diverged from entropy keygen sk");
+        assert_eq!(
+            pk_a, pk_b,
+            "callback keygen pk diverged from entropy keygen pk"
+        );
+        assert_eq!(
+            sk_a, sk_b,
+            "callback keygen sk diverged from entropy keygen sk"
+        );
     }
 }
