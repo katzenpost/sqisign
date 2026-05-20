@@ -1794,7 +1794,10 @@ fn splitting_compute(
             // CHI_EVAL[a][t] in {-1, +1}; cast via i32 -> uint32 then `>> 1`
             // yields 0 (positive) or 0xFFFFFFFF (negative two's-complement).
             let chi = CHI_EVAL[EVEN_INDEX[i][0] as usize][t as usize];
-            let ctl: u32 = (chi as u32) >> 1;
+            // Arithmetic right shift on i32 ((-1) >> 1 == -1) before
+            // the cast to u32, matching the C `(uint32_t)(int >> 1)`.
+            // Logical shift after cast would corrupt the -1 sentinel.
+            let ctl: u32 = (chi >> 1) as u32;
             debug_assert!(ctl == 0 || ctl == 0xFFFF_FFFF);
 
             fp2_neg(&mut t2, &t1);

@@ -8,6 +8,7 @@ description = "SQIsign top-level Verify protocol. Standalone: must build and pas
 
 [dependencies]
 sqisign-common.workspace = true
+sqisign-mp.workspace = true
 sqisign-gf.workspace = true
 sqisign-ec.workspace = true
 sqisign-precomp.workspace = true
