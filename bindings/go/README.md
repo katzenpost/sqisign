@@ -7,28 +7,42 @@ SQIsign code is folded straight into the executable.
 
 ## Build
 
-From the repository root:
+The binding is self-contained from cgo's point of view: both the C
+header (`sqisign.h`) and a prebuilt `libsqisign_ffi.a` are vendored
+alongside the .go files, the latter under `lib/<GOOS>_<GOARCH>/`.
+Consumers pulling the module via `go get` link cleanly against the
+vendored staticlib with no separate cargo step.
 
 ```sh
-cargo build --release -p sqisign-ffi
 cd bindings/go && go test ./sqisign/...
 ```
 
-The first command produces `target/release/libsqisign_ffi.a`; the
-`#cgo LDFLAGS:` directive in `sqisign/sqisign.go` picks it up by a
-path relative to the binding's source directory.
+### Supported platforms
 
-The cgo header (`sqisign.h`) is vendored alongside the binding so
-the include resolves cleanly whether the binding is consumed in-tree
-or from Go's module cache. The companion staticlib path, however, is
-still a `${SRCDIR}/../../../target/release/...` reference that only
-exists for in-tree builds; consumers who pull this module via
-`go get` and want to actually link against it must either copy the
-prebuilt `libsqisign_ffi.a` into the expected location, override the
-binding's `CGO_LDFLAGS` directive, or vendor the binding into their
-own tree where the path resolves. Solving the staticlib-distribution
-question more thoroughly (env-driven `-L`, pkg-config, or per-arch
-release artifacts) is left as future work.
+The binding currently ships a vendored staticlib for `linux/amd64`
+only. On every other GOOS/GOARCH the package compiles via a
+pure-Go stub (`sqisign_unsupported.go`), `KeyGen`/`Sign`/`Verify`
+return `ErrUnsupported`, and the constants stay valid for buffer
+sizing and hybrid composition.
+
+### Refreshing the vendored staticlib
+
+After a Rust-side change to `sqisign-ffi`, regenerate the linux/amd64
+staticlib from the repository root:
+
+```sh
+cargo build --release -p sqisign-ffi
+cp target/release/libsqisign_ffi.a \
+   bindings/go/sqisign/lib/linux_amd64/libsqisign_ffi.a
+```
+
+### Adding a new target
+
+Build `libsqisign_ffi.a` for the target platform and drop it under
+`bindings/go/sqisign/lib/<GOOS>_<GOARCH>/libsqisign_ffi.a`. Add the
+matching `#cgo <GOOS>,<GOARCH> LDFLAGS: ...` directive in
+`sqisign.go` and widen its `//go:build` constraint accordingly. The
+stub's negated constraint then narrows automatically.
 
 ## Randomness
 
