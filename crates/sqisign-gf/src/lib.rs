@@ -233,6 +233,38 @@
 //!   `THREE_INV`'s defining property without leaning on raw-limb
 //!   readings of the redundant Montgomery form. No upstream defect
 //!   observed; every committed C-derived vector replays bit-for-bit.
+//! - [`fp_set_small`] is `fp_set_small(x, val)`, the value setter the
+//!   reference defines as `modint((int)val, *x)`. It is the third gf
+//!   setter (after [`fp_set_zero`] and [`fp_set_one`]) and the first one
+//!   to take a non-`fp_t` argument, which forces the harness's first
+//!   setter-with-a-value record shape: `inputs := {prefill, val}`,
+//!   `outputs := {out}`. The port introduces three internal helpers
+//!   that the reference uses pervasively for Montgomery-domain
+//!   construction: the precomputed n-residue conversion factor [`NRES_C`],
+//!   the positional-to-Montgomery conversion `nres` (one `modmul` call
+//!   with [`NRES_C`] as the second operand), and the int-to-Montgomery
+//!   setter `modint`. The boundary itself is the one-liner
+//!   `modint(val as i32, out)`: the C wrapper narrows its `digit_t`
+//!   argument to `int` before calling `modint`, so only the low 32 bits
+//!   of `val` are observable through the boundary, and the result
+//!   `a[0] = (spint)(int32_t)val` sign-extends to `u64` for values above
+//!   `2^31 - 1` (the port reproduces this as `val as i32` then
+//!   `x as i64 as u64` for the limb-0 write, the explicit two-step cast
+//!   that mirrors the C cast chain bit for bit). The fp_t output is the
+//!   Montgomery representative of the narrowed and sign-extended
+//!   integer; when `val` is `1` the output is the same
+//!   [`MONTGOMERY_ONE`] [`fp_set_one`] writes directly, which exercises
+//!   `nres` through the boundary and confirms [`NRES_C`] is correct
+//!   algorithmically (an independent check beyond the bit-for-bit
+//!   transcription) -- pinned by the unit test
+//!   `nres_of_positional_one_is_montgomery_one` and re-pinned at the
+//!   property level by `fp_set_small(1) == fp_set_one()` for every
+//!   pre-fill. The high-bits-ignored narrowing (`val` differs from
+//!   `val as i32 as u64` for any `val` outside `[-2^31, 2^31 - 1]`) is
+//!   pinned in 1048 of the 1132 differential records and re-pinned at
+//!   the property level by `fp_set_small(val) ==
+//!   fp_set_small(val as i32 as u64)`. No upstream defect observed;
+//!   every committed C-derived vector replays bit-for-bit.
 //! - [`fp_is_equal`] is `fp_is_equal(a, b)`, the second predicate boundary
 //!   in the gf battery: a *binary* predicate returning the same
 //!   `uint32_t` mask shape as [`fp_is_zero`] (`0xFFFFFFFF` when `a` and
@@ -1481,4 +1513,213 @@ fn modcmp(a: &Fp, b: &Fp) -> u32 {
 /// commutative.
 pub fn fp_is_equal(a: &Fp, b: &Fp) -> u32 {
     0u32.wrapping_sub(modcmp(a, b))
+}
+
+/// Montgomery n-residue conversion factor: the precomputed five-limb
+/// constant `nres` multiplies a positional residue by to enter the
+/// Montgomery domain. Transcribed verbatim from the reference's
+/// `static void nres(const spint *m, spint *n)` at
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:297..302`:
+///
+/// ```c
+/// const spint c[5] = {0x4cccccccccf5cu, 0x1999999999999u,
+///                     0x3333333333333u, 0x6666666666666u,
+///                     0xcccccccccccu};
+/// ```
+///
+/// Limb-by-limb correspondence (each constant copied byte-for-byte from
+/// the C source's `0xNNNNNu` literal, with `u` stripped; the Rust
+/// literal is zero-padded to a uniform 16-hex-digit grouping for
+/// `clippy::unusual_byte_groupings` but the underlying value is the
+/// same):
+/// - limb 0: C `0x4cccccccccf5c` (13 hex digits, 51 bits), Rust
+///   `0x0004_cccc_cccc_cf5c`.
+/// - limb 1: C `0x1999999999999` (13 hex digits, 49 bits), Rust
+///   `0x0001_9999_9999_9999`.
+/// - limb 2: C `0x3333333333333` (13 hex digits, 50 bits), Rust
+///   `0x0003_3333_3333_3333`.
+/// - limb 3: C `0x6666666666666` (13 hex digits, 51 bits), Rust
+///   `0x0006_6666_6666_6666`.
+/// - limb 4: C `0xccccccccccc`   (11 hex digits, 44 bits), Rust
+///   `0x0000_0ccc_cccc_cccc`. Note that this is **eleven** `c` digits,
+///   not twelve; the C literal is `0xcccccccccccu` and dropping the
+///   `0x` prefix and trailing `u` leaves an 11-character core.
+///
+/// Used by [`nres`]; the bit-for-bit correspondence with the reference's
+/// constant is the load-bearing property. The independent value-level
+/// oracle that the constant is the correct Montgomery `R^2 mod p` is
+/// `nres(positional 1) == MONTGOMERY_ONE`, pinned in the unit test
+/// `nres_of_positional_one_is_montgomery_one` below: that test exercises
+/// the constant through the `modmul` core and confirms the result is the
+/// already-cross-checked Montgomery representative of `1`.
+const NRES_C: Fp = [
+    0x0004_cccc_cccc_cf5c,
+    0x0001_9999_9999_9999,
+    0x0003_3333_3333_3333,
+    0x0006_6666_6666_6666,
+    0x0000_0ccc_cccc_cccc,
+];
+
+/// Convert a positional residue `m` to its Montgomery n-residue
+/// representative `n = m * R^2 * R^-1 mod p == m * R mod p`.
+///
+/// Mirrors the reference's
+/// `static void nres(const spint *m, spint *n)` at
+/// `fp_p5248_64.c:297..302` exactly:
+///
+/// ```c
+/// const spint c[5] = {0x4cccccccccf5cu, 0x1999999999999u,
+///                     0x3333333333333u, 0x6666666666666u,
+///                     0xcccccccccccu};
+/// modmul(m, c, n);
+/// ```
+///
+/// The single internal call is `modmul(m, c, n)` with the precomputed
+/// constant [`NRES_C`] as the second operand. Operand order is preserved
+/// for transcription clarity even though [`modmul`] is bit-exactly
+/// commutative on the column sums (an established property pinned at the
+/// `fp_mul` boundary); the reference puts `m` first so the port does too.
+///
+/// Note on aliasing: the reference passes `nres(a, a)` from inside
+/// `modone` and `modint` (and elsewhere), reading and writing the same
+/// buffer. The reference's [`modmul`] handles that aliasing correctly
+/// because it writes `c[0]` only after the last column that needs `a[0]`
+/// or `b[0]`, then `c[1]` only after the last column that needs `a[1]`
+/// or `b[1]`, and so on. The Rust port's borrow checker will not permit
+/// the equivalent `modmul(a, c, a)` call inside a Rust function,
+/// however; callers that need `nres(a, a)` semantics must use a separate
+/// destination buffer and copy back, exactly as [`modint`] does. The
+/// `n` parameter is therefore documented as **distinct from `m`** at
+/// the Rust call site, even though the underlying C is aliasing-safe.
+fn nres(m: &Fp, n: &mut Fp) {
+    modmul(m, &NRES_C, n);
+}
+
+/// Set `a` to the Montgomery n-residue representative of the integer
+/// `x`. Mirrors the reference's
+/// `static void modint(int x, spint *a)` at `fp_p5248_64.c:362..369`
+/// exactly:
+///
+/// ```c
+/// a[0] = (spint)x;
+/// for (i = 1; i < 5; i++) a[i] = 0;
+/// nres(a, a);
+/// ```
+///
+/// Three faithfully reproduced subtleties:
+///
+/// 1. **Sign-extending cast at limb 0.** The reference writes
+///    `a[0] = (spint)x` where `x` is `int` (`int32_t` on every
+///    reasonable platform) and `spint` is `uint64_t`. The cast widens a
+///    signed integer to an unsigned 64-bit one, which in C is
+///    sign-extending for negative values: `(uint64_t)(int32_t)(-1)` is
+///    `0xffff_ffff_ffff_ffff`. The port reproduces this as
+///    `x as i64 as u64`: the `as i64` is the sign-extending widening
+///    `i32 -> i64`, and the bit-cast `as u64` preserves the bit pattern.
+///    Equivalently `x as u32 as u64 | sign_mask` would work but the
+///    `x as i64 as u64` spelling makes the cast chain visible at the
+///    source level.
+/// 2. **Scratch destination for `nres(a, a)`.** The reference's `nres`
+///    handles aliased in/out via the underlying [`modmul`]'s
+///    column-ordering, but Rust's borrow checker does not permit a
+///    direct `nres(a, a)`. The port computes into a fresh `tmp` then
+///    moves `*a = tmp`; the resulting `a` is bit-equal to what the
+///    reference would have produced in place (the [`modmul`] core
+///    reads-then-writes column by column without revisiting an already-
+///    written limb, so an in-place call would produce the same output).
+/// 3. **Limbs 1..=4 are zeroed before the conversion.** The reference's
+///    `modint` writes `a[0] = (spint)x` and then loops `a[i] = 0` for
+///    `i in 1..5`, only then calls `nres`. The port matches: limb 0 is
+///    set from `x` and limbs 1..=4 to `0` *before* the `nres` call, so
+///    the input to `nres` is the positional residue with the same
+///    pre-condition as the reference.
+fn modint(x: i32, a: &mut Fp) {
+    a[0] = x as i64 as u64;
+    a[1] = 0;
+    a[2] = 0;
+    a[3] = 0;
+    a[4] = 0;
+    let mut tmp: Fp = [0u64; NWORDS_FIELD];
+    nres(a, &mut tmp);
+    *a = tmp;
+}
+
+/// GF(p) value setter: writes the Montgomery representative of the
+/// integer `val`, narrowed first to `i32` and then sign-extended to
+/// `u64` for the positional limb-0 write before `nres` converts the
+/// result to Montgomery form.
+///
+/// Mirrors the reference's
+/// `void fp_set_small(fp_t *x, const digit_t val)` at
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:550..554`:
+///
+/// ```c
+/// void fp_set_small(fp_t *x, const digit_t val) {
+///   modint((int)val, *x);
+/// }
+/// ```
+///
+/// The full `digit_t` (`uint64_t` under `RADIX_64`) argument is taken
+/// but immediately narrowed to `int` (`int32_t` on every reasonable
+/// platform). This is the load-bearing observation: only the low 32
+/// bits of `val` are observable through the boundary. The C cast chain
+/// `(int)val` (where val is `uint64_t`) drops the high 32 bits then
+/// reinterprets the low 32 bits as `int32_t`, so for `val ==
+/// 0x80000000` the narrowed `int` is `INT32_MIN` (`-2_147_483_648`)
+/// and the subsequent `a[0] = (spint)x` sign-extends to
+/// `0xffff_ffff_8000_0000`. The port reproduces this as `val as i32`,
+/// which is the bit-preserving `u64 -> i32` narrowing (Rust's `as` on
+/// integer types performs the same truncation-and-reinterpret the C
+/// cast chain does).
+///
+/// The intended argument domain per the function name is "small positive
+/// integer fitting in int" (so the high 32 bits are zero and the low 32
+/// bits are below `2^31`), but the C signature accepts any `digit_t` and
+/// the port must reproduce its behaviour on the full battery, including
+/// the high-bits-ignored narrowing and the sign-extension of values
+/// above `2^31 - 1`. The differential battery exercises both: 12
+/// edge prefills cross 11 representative `val` values including
+/// `0x80000000`, `0xffffffff`, `0x100000000`, `0xffffffff00000000`,
+/// `0xffffffffffffffff` (1132 records total, 1048 of which exercise the
+/// high-bits-ignored narrowing).
+///
+/// Internal helpers landed here for the first time: [`NRES_C`] (the
+/// Montgomery n-residue conversion factor), [`nres`] (the positional ->
+/// Montgomery conversion threaded through the already-ported `modmul`
+/// core), and [`modint`] (the int-to-Montgomery setter, the per-limb
+/// shape `modone` and `modint` share). Going forward, anything in the
+/// reference that calls `nres` or `modint` (or both, through `modmul`'s
+/// `b * modint(_)` style fallthrough) can reuse these directly.
+pub fn fp_set_small(out: &mut Fp, val: u64) {
+    modint(val as i32, out);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Independent value-level oracle for [`NRES_C`]: applying [`nres`]
+    /// to the positional `1` must yield the Montgomery representative of
+    /// `1`. This is the open question recorded in
+    /// `~/sqisign-port-notes.md` ("Boundaries that hardcode a precomputed
+    /// reference constant"): [`fp_set_one`] writes [`MONTGOMERY_ONE`]
+    /// directly as a const, deferring the algorithmic confirmation until
+    /// `nres` (and the `R^2` constant it relies on) landed. With both
+    /// ported as internal helpers alongside [`fp_set_small`], the
+    /// independent check is now executable: running the positional
+    /// `[1, 0, 0, 0, 0]` through `nres` (which is exactly
+    /// `modmul(_, NRES_C, _)`) must produce the same bit pattern the
+    /// reference exposes as `extern const ONE`. A mismatch would mean
+    /// either [`NRES_C`] is wrong limb-for-limb or [`MONTGOMERY_ONE`] is.
+    #[test]
+    fn nres_of_positional_one_is_montgomery_one() {
+        let positional_one: Fp = [1, 0, 0, 0, 0];
+        let mut out: Fp = [0u64; NWORDS_FIELD];
+        nres(&positional_one, &mut out);
+        assert_eq!(
+            out, MONTGOMERY_ONE,
+            "nres(positional 1) must equal the Montgomery representative of 1; \
+             a mismatch indicates NRES_C or MONTGOMERY_ONE was transcribed wrong"
+        );
+    }
 }

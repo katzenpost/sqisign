@@ -86,6 +86,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "fp_set_small"
+path = "fuzz_targets/fp_set_small.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "fp_select"
 path = "fuzz_targets/fp_select.rs"
 test = false
