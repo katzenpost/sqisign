@@ -158,7 +158,8 @@ pub use lll_verification::{
 };
 pub use normeq::{
     quat_change_to_O0_basis, quat_lattice_O0_set, quat_lattice_O0_set_extremal,
-    quat_order_elem_create, QuatPExtremalMaximalOrder,
+    quat_order_elem_create, quat_represent_integer, quat_sampling_random_ideal_O0_given_norm,
+    QuatPExtremalMaximalOrder, QuatRepresentIntegerParams,
 };
 pub use rationals::{
     ibq_abs, ibq_add, ibq_cmp, ibq_copy, ibq_inv, ibq_is_ibz, ibq_is_one, ibq_is_zero,
