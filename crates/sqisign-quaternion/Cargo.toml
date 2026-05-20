@@ -6,9 +6,18 @@ rust-version.workspace = true
 license.workspace = true
 description = "SQIsign quaternion orders and ideals. Verification needs a subset; signing needs the whole. Mirrors vendor/the-sqisign/src/quaternion."
 
+# The quaternion module's ibz_t corresponds to GMP's mpz_t: arbitrary-precision
+# signed integers used on public lattice data. `num-bigint` provides a pure-Rust
+# implementation with native signed-bytes canonical (de)serialization that
+# matches GMP's mpz_export / mpz_import. Constant-time is NOT required here;
+# signature secrets do not flow through the quaternion arithmetic paths.
+# See ~/sqisign-port-notes.md for the full rationale.
 [dependencies]
 sqisign-common.workspace = true
 sqisign-mp.workspace = true
+num-bigint = "0.4"
+num-integer = "0.1"
+num-traits = "0.2"
 
 [dev-dependencies]
 sqisign-vectors.workspace = true
