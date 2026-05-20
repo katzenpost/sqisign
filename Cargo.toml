@@ -20,7 +20,7 @@ members = [
 [workspace.package]
 edition = "2021"
 rust-version = "1.94"
-license = "LGPL-3.0-or-later"
+license = "GPL-3.0-or-later"
 repository = "local"
 # The C reference at this commit is the canonical oracle. Keep in lockstep
 # with UPSTREAM.md; CI verifies the two agree.
