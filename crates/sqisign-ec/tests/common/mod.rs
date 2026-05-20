@@ -9,7 +9,9 @@
 
 use std::collections::BTreeMap;
 
-use sqisign_ec::{AddComponents, EcBasis, EcCurve, EcKps2, EcKps4, EcPoint, JacPoint};
+use sqisign_ec::{
+    AddComponents, EcBasis, EcCurve, EcIsogEven, EcIsom, EcKps2, EcKps4, EcPoint, JacPoint,
+};
 use sqisign_gf::{Fp, Fp2, NWORDS_FIELD};
 use sqisign_vectors::decode;
 
@@ -94,6 +96,22 @@ pub fn ec_kps4_from(prefix: &str, fields: &BTreeMap<String, String>) -> EcKps4 {
             ec_point_from(&format!("{prefix}_K1"), fields),
             ec_point_from(&format!("{prefix}_K2"), fields),
         ],
+    }
+}
+
+pub fn ec_isom_from(prefix: &str, fields: &BTreeMap<String, String>) -> EcIsom {
+    EcIsom {
+        Nx: fp2_from(&format!("{prefix}_Nx"), fields),
+        Nz: fp2_from(&format!("{prefix}_Nz"), fields),
+        D: fp2_from(&format!("{prefix}_D"), fields),
+    }
+}
+
+pub fn ec_isog_even_from(prefix: &str, fields: &BTreeMap<String, String>) -> EcIsogEven {
+    EcIsogEven {
+        curve: ec_curve_from(&format!("{prefix}_curve"), fields),
+        kernel: ec_point_from(&format!("{prefix}_kernel"), fields),
+        length: u32_field(&format!("{prefix}_length"), fields),
     }
 }
 
