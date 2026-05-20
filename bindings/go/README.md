@@ -28,11 +28,19 @@ sizing and hybrid composition.
 ### Refreshing the vendored staticlib
 
 After a Rust-side change to `sqisign-ffi`, regenerate the linux/amd64
-staticlib from the repository root:
+staticlib from the repository root. The Rust target is
+`x86_64-unknown-linux-musl` (not the host's glibc target): a
+musl-built static archive references POSIX-standard libc names
+(`fstat`, `open`, `mmap`, ...) which musl provides natively and
+which glibc exposes as aliases, so the same archive links cleanly
+on Alpine containers and on glibc distributions. A glibc-built
+archive references `_64`-suffixed names (`fstat64`, `open64`, ...)
+that the Alpine linker cannot resolve.
 
 ```sh
-cargo build --release -p sqisign-ffi
-cp target/release/libsqisign_ffi.a \
+rustup target add x86_64-unknown-linux-musl
+cargo build --release --target x86_64-unknown-linux-musl -p sqisign-ffi
+cp target/x86_64-unknown-linux-musl/release/libsqisign_ffi.a \
    bindings/go/sqisign/lib/linux_amd64/libsqisign_ffi.a
 ```
 
