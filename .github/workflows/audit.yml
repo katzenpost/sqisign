@@ -1,13 +1,12 @@
 name: audit
 
 # cargo-audit fails the build on any matching advisory in the
-# RustSec database. Runs on every push and pull request so
-# dependency drift cannot land silently, and daily on schedule so
-# advisories published against a dependency we are already using
-# fire on their own without needing a push.
+# RustSec database. Runs on every pull request so dependency drift
+# cannot land silently, and daily on schedule so advisories
+# published against a dependency we are already using fire on
+# their own without needing a push.
 
 on:
-  push:
   pull_request:
   schedule:
     # 04:17 UTC, an off-peak time picked so the schedule rarely

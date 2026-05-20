@@ -614,7 +614,7 @@ fn fixed_degree_isogeny_impl<R: RngSource>(
     let length: u32 = if !small {
         (TORSION_EVEN_POWER as u32).saturating_sub(HD_EXTRA_TORSION)
     } else {
-        let l = ibz_bitsize(&QUATALG_PINFTY.p) as i32 + QUAT_REPRES_BOUND_INPUT - u_bitsize;
+        let l = ibz_bitsize(&QUATALG_PINFTY.p) + QUAT_REPRES_BOUND_INPUT - u_bitsize;
         debug_assert!(
             u_bitsize < l,
             "fixed_degree_isogeny_and_eval: bitsize bound"
@@ -661,7 +661,7 @@ fn fixed_degree_isogeny_impl<R: RngSource>(
         &CURVES_WITH_ENDOMORPHISMS[index_alternate_order as usize].basis_even,
     );
     let drop_iters = (TORSION_EVEN_POWER as i32) - (length as i32) - (HD_EXTRA_TORSION as i32);
-    let b0_two_clone = b0_two.clone();
+    let b0_two_clone = b0_two;
     ec_dbl_iter_basis(&mut b0_two, drop_iters, &b0_two_clone, &mut e0);
 
     // theta *= u^{-1} mod 2^(length + 2).
@@ -692,7 +692,7 @@ fn fixed_degree_isogeny_impl<R: RngSource>(
 
     // Domain: E0 x E0.
     let mut e00 = ThetaCoupleCurve::zero();
-    e00.e1 = e0.clone();
+    e00.e1 = e0;
     e00.e2 = e0;
 
     let mut dim_two_ker = ThetaKernelCouplePoints::zero();
@@ -763,7 +763,7 @@ pub fn dim2id2iso_ideal_to_isogeny_clapotis<R: RngSource>(
     let mut gcd_uv = Ibz::zero();
     sqisign_quaternion::ibz_gcd(&mut gcd_uv, u, v);
     debug_assert!(ibz_cmp(&gcd_uv, &ibz_const_zero()) != 0);
-    let exp_gcd = ibz_two_adic(&gcd_uv) as i32;
+    let exp_gcd = ibz_two_adic(&gcd_uv);
     let exp: i32 = (TORSION_EVEN_POWER as i32) - exp_gcd;
     let mut rem = Ibz::zero();
     let u_clone = u.clone();
@@ -914,11 +914,11 @@ pub fn dim2id2iso_ideal_to_isogeny_clapotis<R: RngSource>(
     // 7. Drop the kernel down to order 2^exp.
     let dim2_drop = (TORSION_EVEN_POWER as i32 - exp) as u32;
     let mut tmp_pt;
-    tmp_pt = ker.t1.clone();
+    tmp_pt = ker.t1;
     double_couple_point_iter(&mut ker.t1, dim2_drop, &tmp_pt, &e01);
-    tmp_pt = ker.t2.clone();
+    tmp_pt = ker.t2;
     double_couple_point_iter(&mut ker.t2, dim2_drop, &tmp_pt, &e01);
-    tmp_pt = ker.t1m2.clone();
+    tmp_pt = ker.t1m2;
     double_couple_point_iter(&mut ker.t1m2, dim2_drop, &tmp_pt, &e01);
 
     debug_assert!(ibz_is_odd(u) != 0, "u must remain odd after gcd strip");
@@ -944,9 +944,9 @@ pub fn dim2id2iso_ideal_to_isogeny_clapotis<R: RngSource>(
     if ret_theta == 0 {
         return 0;
     }
-    let t1_out = pushed_points[0].clone();
-    let t2_out = pushed_points[1].clone();
-    let t1m2_out = pushed_points[2].clone();
+    let t1_out = pushed_points[0];
+    let t2_out = pushed_points[1];
+    let t1m2_out = pushed_points[2];
 
     // 9. Select the correct codomain curve via a Weil-pairing check.
     copy_point(&mut basis.P, &t1_out.p1);
@@ -965,7 +965,7 @@ pub fn dim2id2iso_ideal_to_isogeny_clapotis<R: RngSource>(
         &mut e1,
     );
     {
-        let mut codomain_tmp = codomain.clone();
+        let mut codomain_tmp = *codomain;
         sqisign_ec::weil(
             &mut w1,
             TORSION_EVEN_POWER as u32,

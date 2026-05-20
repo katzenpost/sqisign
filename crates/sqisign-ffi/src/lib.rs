@@ -135,76 +135,11 @@ pub unsafe extern "C" fn sqisign_lvl1_verify(
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn constants_track_verify_crate() {
-        assert_eq!(SQISIGN_LVL1_PUBLIC_KEY_BYTES, 65);
-        assert_eq!(SQISIGN_LVL1_SIGNATURE_BYTES, 148);
-    }
-
-    #[test]
-    fn length_mismatch_returns_zero() {
-        let sig = [0u8; SQISIGN_LVL1_SIGNATURE_BYTES - 1];
-        let pk = [0u8; SQISIGN_LVL1_PUBLIC_KEY_BYTES];
-        let msg = [0u8; 1];
-        let r = unsafe {
-            sqisign_lvl1_verify(
-                sig.as_ptr(),
-                sig.len(),
-                pk.as_ptr(),
-                pk.len(),
-                msg.as_ptr(),
-                msg.len(),
-            )
-        };
-        assert_eq!(r, 0);
-    }
-
-    #[test]
-    fn null_pointer_with_zero_msg_does_not_crash() {
-        // A bogus zero buffer still fails verification, but must not UB.
-        let sig = [0u8; SQISIGN_LVL1_SIGNATURE_BYTES];
-        let pk = [0u8; SQISIGN_LVL1_PUBLIC_KEY_BYTES];
-        let r = unsafe {
-            sqisign_lvl1_verify(
-                sig.as_ptr(),
-                sig.len(),
-                pk.as_ptr(),
-                pk.len(),
-                core::ptr::null(),
-                0,
-            )
-        };
-        assert_eq!(r, 0);
-    }
-
-    #[test]
-    fn null_sig_returns_zero() {
-        let pk = [0u8; SQISIGN_LVL1_PUBLIC_KEY_BYTES];
-        let r = unsafe {
-            sqisign_lvl1_verify(
-                core::ptr::null(),
-                SQISIGN_LVL1_SIGNATURE_BYTES,
-                pk.as_ptr(),
-                pk.len(),
-                core::ptr::null(),
-                0,
-            )
-        };
-        assert_eq!(r, 0);
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Signing FFI: keypair and sign. Both consume a 48-byte caller-supplied
 // entropy block to seed the KAT-compatible CTR-DRBG. Production callers
 // who want their own RNG should use the Rust-level
 // `sqisign_sign::protocols_keygen` / `protocols_sign` entry points
 // directly with their own `RngSource` implementation.
-// ---------------------------------------------------------------------------
 
 /// Wire size of a serialized level-1 SQIsign secret key, in bytes.
 ///
@@ -366,5 +301,68 @@ pub unsafe extern "C" fn sqisign_lvl1_sign(
         Ok(true) => 1,
         Ok(false) => 0,
         Err(_) => 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constants_track_verify_crate() {
+        assert_eq!(SQISIGN_LVL1_PUBLIC_KEY_BYTES, 65);
+        assert_eq!(SQISIGN_LVL1_SIGNATURE_BYTES, 148);
+    }
+
+    #[test]
+    fn length_mismatch_returns_zero() {
+        let sig = [0u8; SQISIGN_LVL1_SIGNATURE_BYTES - 1];
+        let pk = [0u8; SQISIGN_LVL1_PUBLIC_KEY_BYTES];
+        let msg = [0u8; 1];
+        let r = unsafe {
+            sqisign_lvl1_verify(
+                sig.as_ptr(),
+                sig.len(),
+                pk.as_ptr(),
+                pk.len(),
+                msg.as_ptr(),
+                msg.len(),
+            )
+        };
+        assert_eq!(r, 0);
+    }
+
+    #[test]
+    fn null_pointer_with_zero_msg_does_not_crash() {
+        // A bogus zero buffer still fails verification, but must not UB.
+        let sig = [0u8; SQISIGN_LVL1_SIGNATURE_BYTES];
+        let pk = [0u8; SQISIGN_LVL1_PUBLIC_KEY_BYTES];
+        let r = unsafe {
+            sqisign_lvl1_verify(
+                sig.as_ptr(),
+                sig.len(),
+                pk.as_ptr(),
+                pk.len(),
+                core::ptr::null(),
+                0,
+            )
+        };
+        assert_eq!(r, 0);
+    }
+
+    #[test]
+    fn null_sig_returns_zero() {
+        let pk = [0u8; SQISIGN_LVL1_PUBLIC_KEY_BYTES];
+        let r = unsafe {
+            sqisign_lvl1_verify(
+                core::ptr::null(),
+                SQISIGN_LVL1_SIGNATURE_BYTES,
+                pk.as_ptr(),
+                pk.len(),
+                core::ptr::null(),
+                0,
+            )
+        };
+        assert_eq!(r, 0);
     }
 }

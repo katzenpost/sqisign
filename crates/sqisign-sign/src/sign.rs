@@ -335,7 +335,7 @@ fn compute_dim2_isogeny_challenge<R: RngSource>(
     let mut scalar = vec![0u64; NWORDS_ORDER];
     ibz_to_digits(&mut scalar, degree_resp_inv);
 
-    let cur = dim_two_ker.t1.p2.clone();
+    let cur = dim_two_ker.t1.p2;
     ec_mul(
         &mut dim_two_ker.t1.p2,
         &scalar,
@@ -343,7 +343,7 @@ fn compute_dim2_isogeny_challenge<R: RngSource>(
         &cur,
         &mut ecom_x_eaux.e2,
     );
-    let cur = dim_two_ker.t2.p2.clone();
+    let cur = dim_two_ker.t2.p2;
     ec_mul(
         &mut dim_two_ker.t2.p2,
         &scalar,
@@ -351,7 +351,7 @@ fn compute_dim2_isogeny_challenge<R: RngSource>(
         &cur,
         &mut ecom_x_eaux.e2,
     );
-    let cur = dim_two_ker.t1m2.p2.clone();
+    let cur = dim_two_ker.t1m2.p2;
     ec_mul(
         &mut dim_two_ker.t1m2.p2,
         &scalar,
@@ -360,21 +360,21 @@ fn compute_dim2_isogeny_challenge<R: RngSource>(
         &mut ecom_x_eaux.e2,
     );
 
-    let cur = dim_two_ker.t1.clone();
+    let cur = dim_two_ker.t1;
     double_couple_point_iter(
         &mut dim_two_ker.t1,
         exp_diadic_val_full_resp as u32,
         &cur,
         &ecom_x_eaux,
     );
-    let cur = dim_two_ker.t2.clone();
+    let cur = dim_two_ker.t2;
     double_couple_point_iter(
         &mut dim_two_ker.t2,
         exp_diadic_val_full_resp as u32,
         &cur,
         &ecom_x_eaux,
     );
-    let cur = dim_two_ker.t1m2.clone();
+    let cur = dim_two_ker.t1m2;
     double_couple_point_iter(
         &mut dim_two_ker.t1m2,
         exp_diadic_val_full_resp as u32,
@@ -452,7 +452,7 @@ fn compute_small_chain_isogeny_signature(
     copy_point(&mut points[2], &b_chall_2.PmQ);
 
     let drop = (pow_dim2_deg_resp as i32) + (HD_EXTRA_TORSION as i32);
-    let bas_clone = b_chall_2.clone();
+    let bas_clone = *b_chall_2;
     ec_dbl_iter_basis(b_chall_2, drop, &bas_clone, e_chall_2);
 
     let mut ker = EcPoint::zero();
@@ -483,17 +483,17 @@ fn compute_challenge_codomain_signature(
     let mut bas_sk = EcBasis::zero();
     copy_basis(&mut bas_sk, &sk.canonical_basis);
 
-    phi_chall.curve = sk.curve.clone();
+    phi_chall.curve = sk.curve;
     phi_chall.length = (TORSION_EVEN_POWER as i32 - sig.backtracking as i32) as u32;
 
-    let mut sk_curve = sk.curve.clone();
+    let mut sk_curve = sk.curve;
     ec_ladder3pt(
         &mut phi_chall.kernel,
         &sig.chall_coeff,
         &bas_sk.P,
         &bas_sk.Q,
         &bas_sk.PmQ,
-        &mut sk_curve,
+        &sk_curve,
     );
 
     let mut kernel = phi_chall.kernel;
@@ -594,7 +594,7 @@ pub fn protocols_sign<R: RngSource>(
 
     let mut ecom_eaux = ThetaCoupleCurveWithBasis::zero();
     let mut eaux2_echall2 = ThetaCoupleCurveWithBasis::zero();
-    let mut e_chall = sk.curve.clone();
+    let mut e_chall = sk.curve;
 
     let mut pow_dim2_deg_resp: u8;
 
@@ -656,9 +656,9 @@ pub fn protocols_sign<R: RngSource>(
                 + (HD_EXTRA_TORSION as i32)
                 + (sig.two_resp_length as i32);
             let drop = (TORSION_EVEN_POWER as i32) - reduced_order;
-            let b1_clone = ecom_eaux.b1.clone();
+            let b1_clone = ecom_eaux.b1;
             ec_dbl_iter_basis(&mut ecom_eaux.b1, drop, &b1_clone, &mut ecom_eaux.e1);
-            let b2_clone = ecom_eaux.b2.clone();
+            let b2_clone = ecom_eaux.b2;
             ec_dbl_iter_basis(&mut ecom_eaux.b2, drop, &b2_clone, &mut ecom_eaux.e2);
 
             ret = compute_dim2_isogeny_challenge(
@@ -678,11 +678,11 @@ pub fn protocols_sign<R: RngSource>(
             copy_curve(&mut eaux2_echall2.e2, &ecom_eaux.e1);
             reduced_order = sig.two_resp_length as i32;
             let drop = (TORSION_EVEN_POWER as i32) - reduced_order;
-            let b1_clone = ecom_eaux.b1.clone();
+            let b1_clone = ecom_eaux.b1;
             ec_dbl_iter_basis(&mut eaux2_echall2.b1, drop, &b1_clone, &mut ecom_eaux.e1);
             // (The C reference applies the same double-iter twice; we
             // mirror that verbatim to keep the exit basis identical.)
-            let b1_clone = ecom_eaux.b1.clone();
+            let b1_clone = ecom_eaux.b1;
             ec_dbl_iter_basis(&mut eaux2_echall2.b1, drop, &b1_clone, &mut ecom_eaux.e1);
             copy_basis(&mut eaux2_echall2.b2, &eaux2_echall2.b1);
         }

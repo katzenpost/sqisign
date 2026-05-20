@@ -79,8 +79,8 @@ pub fn ibz_rand_interval<R: RngSource>(rng: &mut R, rand: &mut Ibz, a: &Ibz, b: 
     // `num_bigint`'s `bits()` returns this same value for non-zero
     // unsigned magnitudes.
     let len_bits = bmina.0.bits() as usize;
-    let len_bytes = (len_bits + 7) / 8;
-    let len_limbs = (len_bytes + LIMB_BYTES - 1) / LIMB_BYTES;
+    let len_bytes = len_bits.div_ceil(8);
+    let len_limbs = len_bytes.div_ceil(LIMB_BYTES);
     let buf_bytes = len_limbs * LIMB_BYTES;
 
     // Top-limb mask, matching the reference's

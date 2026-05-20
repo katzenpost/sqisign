@@ -140,7 +140,7 @@ fn run_one(e: &KatEntry) -> Result<(), String> {
         return Err(format!(
             "count={}: sk bytes diverged\n  got:  {}\n  want: {}",
             e.count,
-            hex::encode_upper(&sk_bytes),
+            hex::encode_upper(sk_bytes),
             hex::encode_upper(&e.sk)
         ));
     }
