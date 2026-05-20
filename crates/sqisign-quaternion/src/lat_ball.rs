@@ -1,17 +1,26 @@
 //! `lat_ball.c`: bounding parallelogram and lattice ball sampling.
 //!
-//! Mirrors `vendor/the-sqisign/src/quaternion/ref/generic/lat_ball.c`. Only
-//! the deterministic boundary [`quat_lattice_bound_parallelogram`] is in
-//! scope this batch: the surrounding `quat_lattice_sample_from_ball`
-//! depends on `ibz_rand_interval` (RNG-driven) and joins the deferred
-//! RNG-driven boundary set alongside `ibz_rand_*` and
-//! `ibz_generate_random_prime`.
+//! Mirrors `vendor/the-sqisign/src/quaternion/ref/generic/lat_ball.c`.
+//! Both the deterministic [`quat_lattice_bound_parallelogram`] and the
+//! RNG-driven [`quat_lattice_sample_from_ball`] are in scope. The
+//! sampler takes `&mut impl RngSource` as its first formal parameter,
+//! replacing the reference's thread-local DRBG global; bytes drawn from
+//! the trait match what the reference would have drawn under an
+//! identically seeded DRBG.
 
+use sqisign_common::RngSource;
+
+use crate::algebra::{quat_alg_normalize, QuatAlg, QuatAlgElem};
 use crate::dim4::{
-    ibz_mat_4x4_identity, ibz_mat_4x4_inv_with_det_as_denom, ibz_mat_4x4_scalar_mul, IbzMat4x4,
-    IbzVec4,
+    ibz_mat_4x4_eval, ibz_mat_4x4_eval_t, ibz_mat_4x4_identity, ibz_mat_4x4_inv_with_det_as_denom,
+    ibz_mat_4x4_scalar_mul, ibz_vec_4_new, quat_qf_eval, IbzMat4x4, IbzVec4,
 };
-use crate::ibz::{ibz_abs, ibz_div, ibz_is_one, ibz_is_zero, ibz_mul, ibz_sqrt_floor, Ibz};
+use crate::ibz::{
+    ibz_abs, ibz_add, ibz_cmp, ibz_const_two, ibz_const_zero, ibz_div, ibz_is_one, ibz_is_zero,
+    ibz_mul, ibz_sqrt_floor, ibz_sub, Ibz,
+};
+use crate::ibz_rand::ibz_rand_interval;
+use crate::lattice::{quat_lattice_gram, QuatLattice};
 use crate::lll::quat_lll_core;
 
 /// `quat_lattice_bound_parallelogram(box, U, G, radius)`.
@@ -82,6 +91,87 @@ pub fn quat_lattice_bound_parallelogram(
     }
 }
 
-// `quat_lattice_sample_from_ball` is deferred: it depends on
-// `ibz_rand_interval`, which is part of the RNG-driven boundary set the
-// quaternion port has not yet brought in.
+/// `quat_lattice_sample_from_ball(rng, res, lattice, alg, radius)`.
+///
+/// Samples a non-zero lattice element of (twice) the squared norm at most
+/// `radius * lattice.denom^2 * 2` (the C reference's "Gram matrix is
+/// twice the norm" correction is preserved verbatim). Returns 1 on
+/// success, 0 if the bounding box collapses to the origin (only the zero
+/// element lies inside the ball).
+///
+/// The rejection loop mirrors the reference exactly: per coordinate, if
+/// `box[i] == 0` then `x[i] = 0`, else draw `x[i]` from
+/// `ibz_rand_interval(rng, 0, 2 * box[i])` and shift by `-box[i]`. The
+/// `rng` argument replaces the reference's thread-local DRBG global; the
+/// byte stream consumed is identical for an identically seeded DRBG.
+pub fn quat_lattice_sample_from_ball<R: RngSource>(
+    rng: &mut R,
+    res: &mut QuatAlgElem,
+    lattice: &QuatLattice,
+    alg: &QuatAlg,
+    radius: &Ibz,
+) -> i32 {
+    assert!(
+        ibz_cmp(radius, &ibz_const_zero()) > 0,
+        "quat_lattice_sample_from_ball: radius must be positive"
+    );
+
+    let mut box_ = ibz_vec_4_new();
+    let mut u_mat = crate::dim4::ibz_mat_4x4_new();
+    let mut g = crate::dim4::ibz_mat_4x4_new();
+    let mut x = ibz_vec_4_new();
+    let mut rad = Ibz::zero();
+    let mut tmp = Ibz::zero();
+
+    // Compute the Gram matrix of the lattice.
+    quat_lattice_gram(&mut g, lattice, alg);
+
+    // Correct ball radius by the denominator.
+    ibz_mul(&mut rad, radius, &lattice.denom);
+    let rad_clone = rad.clone();
+    ibz_mul(&mut rad, &rad_clone, &lattice.denom);
+    // Correct by 2 (Gram matrix corresponds to twice the norm).
+    let rad_clone = rad.clone();
+    ibz_mul(&mut rad, &rad_clone, &ibz_const_two());
+
+    // Compute a bounding parallelogram for the ball, stop if it only
+    // contains the origin.
+    let mut ok = quat_lattice_bound_parallelogram(&mut box_, &mut u_mat, &g, &rad);
+    if ok == 0 {
+        return 0;
+    }
+
+    // Rejection sampling from the parallelogram.
+    loop {
+        // Sample vector.
+        for i in 0..4 {
+            if ibz_is_zero(&box_[i]) != 0 {
+                x[i] = ibz_const_zero();
+            } else {
+                let box_i = box_[i].clone();
+                ibz_add(&mut tmp, &box_i, &box_i);
+                ok &= ibz_rand_interval(rng, &mut x[i], &ibz_const_zero(), &tmp);
+                let cur = x[i].clone();
+                ibz_sub(&mut x[i], &cur, &box_[i]);
+                if ok == 0 {
+                    return ok;
+                }
+            }
+        }
+        // Map to parallelogram.
+        let x_clone = x.clone();
+        ibz_mat_4x4_eval_t(&mut x, &x_clone, &u_mat);
+        // Evaluate quadratic form.
+        quat_qf_eval(&mut tmp, &g, &x);
+        if ibz_is_zero(&tmp) == 0 && ibz_cmp(&tmp, &rad) <= 0 {
+            break;
+        }
+    }
+
+    // Evaluate linear combination.
+    ibz_mat_4x4_eval(&mut res.coord, &lattice.basis, &x);
+    res.denom = lattice.denom.clone();
+    quat_alg_normalize(res);
+
+    ok
+}

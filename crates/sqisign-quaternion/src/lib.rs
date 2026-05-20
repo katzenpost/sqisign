@@ -139,7 +139,7 @@ pub use ibz_rand::{
     ibz_rand_interval_minm_m,
 };
 pub use integers::ibz_cornacchia_prime;
-pub use lat_ball::quat_lattice_bound_parallelogram;
+pub use lat_ball::{quat_lattice_bound_parallelogram, quat_lattice_sample_from_ball};
 pub use lattice::{
     quat_lattice_add, quat_lattice_alg_elem_mul, quat_lattice_conjugate_without_hnf,
     quat_lattice_contains, quat_lattice_dual_without_hnf, quat_lattice_equal, quat_lattice_gram,
@@ -151,7 +151,10 @@ pub use lll::{
     quat_lattice_lll, quat_lll_core, DELTABAR, DELTA_DENOM, DELTA_NUM, EPSILON_DENOM, EPSILON_NUM,
     ETABAR,
 };
-pub use lll_applications::{quat_lideal_lideal_mul_reduced, quat_lideal_reduce_basis};
+pub use lll_applications::{
+    quat_lideal_lideal_mul_reduced, quat_lideal_prime_norm_reduced_equivalent,
+    quat_lideal_reduce_basis,
+};
 pub use lll_verification::{
     ibq_vec_4_copy_ibz, quat_lll_bilinear, quat_lll_gram_schmidt_transposed_with_ibq,
     quat_lll_set_ibq_parameters, quat_lll_verify,
