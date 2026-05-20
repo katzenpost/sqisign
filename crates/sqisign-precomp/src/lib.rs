@@ -46,20 +46,15 @@ use std::sync::LazyLock;
 use sqisign_ec::{EcBasis, EcCurve, EcPoint};
 use sqisign_gf::{Fp2, NWORDS_FIELD};
 use sqisign_quaternion::dim2::IbzMat2x2;
-use sqisign_quaternion::{Ibz, QuatAlg, QuatAlgElem, QuatLattice, QuatLeftIdeal};
+use sqisign_quaternion::{Ibz, QuatAlg, QuatAlgElem, QuatLeftIdeal};
+
+/// Re-export of [`sqisign_quaternion::QuatPExtremalMaximalOrder`] so the
+/// precomputed [`EXTREMAL_ORDERS`] array stays directly usable by the
+/// quaternion crate's RNG-driven `quat_represent_integer` and friends
+/// without a wrapping conversion.
+pub use sqisign_quaternion::QuatPExtremalMaximalOrder;
 
 mod loader;
-
-/// `quat_p_extremal_maximal_order_t`: extremal maximal order with a small
-/// element `z` of discriminant `q`, an element `t` of norm `p` orthogonal
-/// to `z`, and the absolute value of `z^2`. Mirrors the C struct.
-#[derive(Clone, Debug)]
-pub struct QuatPExtremalMaximalOrder {
-    pub order: QuatLattice,
-    pub z: QuatAlgElem,
-    pub t: QuatAlgElem,
-    pub q: u32,
-}
 
 /// `curve_with_endomorphism_ring_t`: a starting curve together with a
 /// precomputed even-torsion basis and the action of the endomorphism

@@ -22,38 +22,57 @@
 //!    and a dimension-two `theta_chain_compute_and_eval_randomized` step.
 //!    Inherits the deferral above.
 
+use sqisign_common::RngSource;
 use sqisign_ec::{
     copy_basis, copy_curve, copy_point, ec_curve_normalize_a24, ec_dbl_iter_basis, ec_point_init,
     EcBasis, EcCurve, NWORDS_ORDER, TORSION_EVEN_POWER,
 };
 use sqisign_hd::{
-    copy_bases_to_kernel, double_couple_point_iter, theta_chain_compute_and_eval_randomized,
-    ThetaCoupleCurve, ThetaCouplePoint, ThetaKernelCouplePoints, HD_EXTRA_TORSION,
+    copy_bases_to_kernel, double_couple_point_iter, theta_chain_compute_and_eval,
+    theta_chain_compute_and_eval_randomized, ThetaCoupleCurve, ThetaCouplePoint,
+    ThetaKernelCouplePoints, HD_EXTRA_TORSION,
 };
 use sqisign_precomp::{
     CONNECTING_IDEALS, CURVES_WITH_ENDOMORPHISMS, EXTREMAL_ORDERS, NUM_ALTERNATE_EXTREMAL_ORDERS,
     QUATALG_PINFTY, TORSION_PLUS_2POWER,
 };
-use sqisign_quaternion::dim2::ibz_mat_2x2_new;
 use sqisign_quaternion::dim4::{
     ibz_mat_4x4_copy, ibz_mat_4x4_eval, ibz_mat_4x4_new, ibz_vec_4_new, quat_qf_eval, IbzMat4x4,
     IbzVec4,
 };
 use sqisign_quaternion::{
     ibz_add, ibz_bitsize, ibz_cmp, ibz_const_one, ibz_const_two, ibz_const_zero,
-    ibz_cornacchia_prime, ibz_div, ibz_get, ibz_invmod, ibz_is_even, ibz_is_odd, ibz_is_one,
-    ibz_is_zero, ibz_mod, ibz_mod_ui, ibz_mul, ibz_neg, ibz_pow, ibz_set, ibz_sub, ibz_two_adic,
-    quat_alg_conj, quat_alg_elem_copy, quat_alg_mul, quat_alg_normalize, quat_lattice_alg_elem_mul,
-    quat_lattice_contains, quat_lideal_conjugate_without_hnf, quat_lideal_copy,
-    quat_lideal_lideal_mul_reduced, quat_lideal_reduce_basis, Ibz, QuatAlg, QuatAlgElem,
-    QuatLattice, QuatLeftIdeal,
+    ibz_cornacchia_prime, ibz_div, ibz_get, ibz_invmod, ibz_is_even, ibz_is_odd, ibz_is_zero,
+    ibz_mod, ibz_mod_ui, ibz_mul, ibz_neg, ibz_pow, ibz_set, ibz_sub, ibz_two_adic, quat_alg_conj,
+    quat_alg_mul, quat_alg_normalize, quat_lattice_alg_elem_mul, quat_lattice_contains,
+    quat_lideal_conjugate_without_hnf, quat_lideal_copy, quat_lideal_create,
+    quat_lideal_lideal_mul_reduced, quat_lideal_reduce_basis, quat_represent_integer, Ibz, QuatAlg,
+    QuatAlgElem, QuatLattice, QuatLeftIdeal, QuatRepresentIntegerParams,
 };
 
 use crate::id2iso::endomorphism_application_even_basis;
 
+/// Local zero constructor for [`Fp2`], mirroring the inline literal the
+/// rest of `sqisign-hd` uses (`Fp2 { re: [0; NWORDS_FIELD], im: [0; NWORDS_FIELD] }`).
+#[inline]
+fn fp2_zero() -> sqisign_gf::Fp2 {
+    sqisign_gf::Fp2 {
+        re: [0u64; sqisign_gf::NWORDS_FIELD],
+        im: [0u64; sqisign_gf::NWORDS_FIELD],
+    }
+}
+
 /// `QUAT_repres_bound_input` (lvl1). Used by [`fixed_degree_isogeny_and_eval`]
 /// to size the dimension-two isogeny step.
 pub const QUAT_REPRES_BOUND_INPUT: i32 = 20;
+
+/// `QUAT_primality_num_iter` (lvl1). Iteration count for the
+/// Miller-Rabin probable-prime tests inside `quat_represent_integer`.
+pub const QUAT_REPRESENT_INTEGER_PRIMALITY_ITER: i32 = 32;
+
+/// `QUAT_equiv_bound_coeff` (lvl1). Bound passed to the
+/// `quat_lideal_prime_norm_reduced_equivalent` search in keygen/sign.
+pub const QUAT_EQUIV_BOUND_COEFF: i32 = 64;
 
 /// `FINDUV_box_size` (lvl1).
 pub const FINDUV_BOX_SIZE: i32 = 2;
@@ -534,107 +553,491 @@ pub fn find_uv(
     found
 }
 
-/// `fixed_degree_isogeny_and_eval(lideal, u, small, E34, P12, numP,
+/// `fixed_degree_isogeny_and_eval(rng, lideal, u, small, E34, P12, numP,
 /// index_alternate_order)`. Mirrors the C entry point.
 ///
-/// **Body deferred**: requires `quat_represent_integer`, which is
-/// RNG-driven and not yet ported in `sqisign-quaternion::normeq`.
+/// Builds an isogeny of fixed degree `u` from an alternate maximal
+/// order and evaluates it at the points of `p12`. Returns the chain
+/// length on success and 0 if the underlying `quat_represent_integer`
+/// search exhausts its bounded counter.
+///
+/// The `rng` argument replaces the reference's thread-local DRBG global;
+/// the byte stream consumed is identical for an identically seeded DRBG.
 #[allow(clippy::too_many_arguments)]
-pub fn fixed_degree_isogeny_and_eval(
-    _lideal: &mut QuatLeftIdeal,
-    _u: &Ibz,
-    _small: bool,
-    _e34: &mut ThetaCoupleCurve,
-    _p12: &mut [ThetaCouplePoint],
-    _num_p: usize,
-    _index_alternate_order: i32,
+pub fn fixed_degree_isogeny_and_eval<R: RngSource>(
+    rng: &mut R,
+    lideal: &mut QuatLeftIdeal,
+    u: &Ibz,
+    small: bool,
+    e34: &mut ThetaCoupleCurve,
+    p12: &mut [ThetaCouplePoint],
+    num_p: usize,
+    index_alternate_order: i32,
 ) -> i32 {
-    panic!(
-        "fixed_degree_isogeny_and_eval is RNG-driven (quat_represent_integer); \
-         port pending sqisign-quaternion::normeq RNG path."
-    );
+    fixed_degree_isogeny_impl(rng, lideal, u, small, e34, p12, num_p, index_alternate_order)
 }
 
-/// `dim2id2iso_ideal_to_isogeny_clapotis(beta1, beta2, u, v, d1, d2,
+/// Internal worker for [`fixed_degree_isogeny_and_eval`]. Mirrors the
+/// static `_fixed_degree_isogeny_impl` in
+/// `vendor/the-sqisign/src/id2iso/ref/lvlx/dim2id2iso.c`.
+#[allow(clippy::too_many_arguments)]
+fn fixed_degree_isogeny_impl<R: RngSource>(
+    rng: &mut R,
+    lideal: &mut QuatLeftIdeal,
+    u: &Ibz,
+    small: bool,
+    e34: &mut ThetaCoupleCurve,
+    p12: &mut [ThetaCouplePoint],
+    num_p: usize,
+    index_alternate_order: i32,
+) -> i32 {
+    let mut e0 = EcCurve::zero();
+    copy_curve(
+        &mut e0,
+        &CURVES_WITH_ENDOMORPHISMS[index_alternate_order as usize].curve,
+    );
+    ec_curve_normalize_a24(&mut e0);
+
+    let u_bitsize = ibz_bitsize(u);
+
+    // Decide the dimension-two step's power-of-two length. Smaller is
+    // faster but risks `quat_represent_integer` failing the search.
+    let length: u32 = if !small {
+        (TORSION_EVEN_POWER as u32).saturating_sub(HD_EXTRA_TORSION)
+    } else {
+        let l = ibz_bitsize(&QUATALG_PINFTY.p) as i32 + QUAT_REPRES_BOUND_INPUT - u_bitsize;
+        debug_assert!(u_bitsize < l, "fixed_degree_isogeny_and_eval: bitsize bound");
+        debug_assert!(
+            (l as u32) < (TORSION_EVEN_POWER as u32).saturating_sub(HD_EXTRA_TORSION),
+            "fixed_degree_isogeny_and_eval: length under torsion bound"
+        );
+        l as u32
+    };
+    debug_assert!(length > 0, "fixed_degree_isogeny_and_eval: length is zero");
+
+    // theta = quat_represent_integer with target norm u * (2^length - u).
+    let mut two_pow = Ibz::zero();
+    ibz_pow(&mut two_pow, &ibz_const_two(), length);
+    let mut tmp = u.clone();
+    debug_assert!(ibz_cmp(&two_pow, &tmp) > 0);
+    debug_assert!(ibz_is_even(&tmp) == 0, "u must be odd");
+
+    let cur = tmp.clone();
+    ibz_sub(&mut tmp, &two_pow, &cur);
+    let cur = tmp.clone();
+    ibz_mul(&mut tmp, &cur, u);
+    debug_assert!(ibz_is_even(&tmp) == 0, "target norm must be odd");
+
+    let extremal = &EXTREMAL_ORDERS[index_alternate_order as usize];
+    let ri_params = QuatRepresentIntegerParams {
+        primality_test_iterations: QUAT_REPRESENT_INTEGER_PRIMALITY_ITER,
+        order: extremal,
+        algebra: &QUATALG_PINFTY,
+    };
+    let mut theta = QuatAlgElem::new();
+    let ret_ri = quat_represent_integer(rng, &mut theta, &tmp, 1, &ri_params);
+    if ret_ri == 0 {
+        return 0;
+    }
+
+    quat_lideal_create(lideal, &theta, u, &extremal.order, &QUATALG_PINFTY);
+
+    // Pull down the precomputed even-torsion basis to order length+HD_extra.
+    let mut b0_two = EcBasis::zero();
+    copy_basis(
+        &mut b0_two,
+        &CURVES_WITH_ENDOMORPHISMS[index_alternate_order as usize].basis_even,
+    );
+    let drop_iters = (TORSION_EVEN_POWER as i32) - (length as i32) - (HD_EXTRA_TORSION as i32);
+    let b0_two_clone = b0_two.clone();
+    ec_dbl_iter_basis(&mut b0_two, drop_iters, &b0_two_clone, &mut e0);
+
+    // theta *= u^{-1} mod 2^(length + 2).
+    let cur = two_pow.clone();
+    ibz_mul(&mut two_pow, &cur, &ibz_const_two());
+    let cur = two_pow.clone();
+    ibz_mul(&mut two_pow, &cur, &ibz_const_two());
+    let mut inv_u = u.clone();
+    let _ok_inv = ibz_invmod(&mut inv_u, &u.clone(), &two_pow);
+    debug_assert!(ibz_is_even(&inv_u) == 0, "u^{{-1}} mod 2^(L+2) must be odd");
+    let inv_u_clone = inv_u.clone();
+    for k in 0..4 {
+        let cur = theta.coord[k].clone();
+        ibz_mul(&mut theta.coord[k], &cur, &inv_u_clone);
+    }
+
+    // Apply theta to the basis; record the image as the dim-two kernel
+    // second basis.
+    let mut b0_two_theta = EcBasis::zero();
+    copy_basis(&mut b0_two_theta, &b0_two);
+    endomorphism_application_even_basis(
+        &mut b0_two_theta,
+        index_alternate_order,
+        &e0,
+        &theta,
+        (length + HD_EXTRA_TORSION) as i32,
+    );
+
+    // Domain: E0 x E0.
+    let mut e00 = ThetaCoupleCurve::zero();
+    e00.e1 = e0.clone();
+    e00.e2 = e0;
+
+    let mut dim_two_ker = ThetaKernelCouplePoints::zero();
+    copy_bases_to_kernel(&mut dim_two_ker, &b0_two, &b0_two_theta);
+
+    let ret_chain = theta_chain_compute_and_eval(
+        length,
+        &mut e00,
+        &dim_two_ker,
+        true,
+        e34,
+        &mut p12[..num_p],
+    );
+    if ret_chain == 0 {
+        return 0;
+    }
+    length as i32
+}
+
+/// `dim2id2iso_ideal_to_isogeny_clapotis(rng, beta1, beta2, u, v, d1, d2,
 /// codomain, basis, lideal, Bpoo)`. Mirrors the C entry point.
 ///
-/// **Body deferred**: composes [`find_uv`] (deterministic) with two
-/// `fixed_degree_isogeny_and_eval` calls and one
-/// `theta_chain_compute_and_eval_randomized` step, all RNG-driven. See
-/// crate-level docs.
+/// Composes [`find_uv`] (deterministic) with two
+/// [`fixed_degree_isogeny_and_eval`] calls and one
+/// [`theta_chain_compute_and_eval_randomized`] step. All RNG-derived
+/// bytes flow through `rng`; the byte stream consumed matches what the
+/// C reference would have drawn under an identically seeded DRBG.
 #[allow(clippy::too_many_arguments)]
-pub fn dim2id2iso_ideal_to_isogeny_clapotis(
-    _beta1: &mut QuatAlgElem,
-    _beta2: &mut QuatAlgElem,
-    _u: &mut Ibz,
-    _v: &mut Ibz,
-    _d1: &mut Ibz,
-    _d2: &mut Ibz,
-    _codomain: &mut EcCurve,
-    _basis: &mut EcBasis,
-    _lideal: &QuatLeftIdeal,
-    _bpoo: &QuatAlg,
+pub fn dim2id2iso_ideal_to_isogeny_clapotis<R: RngSource>(
+    rng: &mut R,
+    beta1: &mut QuatAlgElem,
+    beta2: &mut QuatAlgElem,
+    u: &mut Ibz,
+    v: &mut Ibz,
+    d1: &mut Ibz,
+    d2: &mut Ibz,
+    codomain: &mut EcCurve,
+    basis: &mut EcBasis,
+    lideal: &QuatLeftIdeal,
+    bpoo: &QuatAlg,
 ) -> i32 {
-    panic!(
-        "dim2id2iso_ideal_to_isogeny_clapotis is RNG-driven (composes \
-         fixed_degree_isogeny_and_eval); port pending sqisign-quaternion::normeq."
+    let mut target = Ibz::zero();
+    let mut tmp = Ibz::zero();
+    let mut two_pow = Ibz::zero();
+    let mut theta = QuatAlgElem::new();
+    let _ = (&mut target, &mut two_pow); // (mirror C scaffolding; some scratch is local)
+
+    // 1. Pick u, v, d1, d2, beta1, beta2 and the alternate-order indices.
+    let mut index_order1: i32 = 0;
+    let mut index_order2: i32 = 0;
+    let ret_uv = find_uv(
+        u,
+        v,
+        beta1,
+        beta2,
+        d1,
+        d2,
+        &mut index_order1,
+        &mut index_order2,
+        &TORSION_PLUS_2POWER,
+        lideal,
+        bpoo,
+        NUM_ALTERNATE_EXTREMAL_ORDERS as i32,
     );
+    if ret_uv == 0 {
+        return 0;
+    }
+    debug_assert!(
+        ibz_is_odd(d1) != 0 && ibz_is_odd(d2) != 0,
+        "dim2id2iso_ideal_to_isogeny_clapotis: d1, d2 must be odd"
+    );
+
+    // 2. Strip the power-of-two GCD of (u, v).
+    let mut gcd_uv = Ibz::zero();
+    sqisign_quaternion::ibz_gcd(&mut gcd_uv, u, v);
+    debug_assert!(ibz_cmp(&gcd_uv, &ibz_const_zero()) != 0);
+    let exp_gcd = ibz_two_adic(&gcd_uv) as i32;
+    let exp: i32 = (TORSION_EVEN_POWER as i32) - exp_gcd;
+    let mut rem = Ibz::zero();
+    let u_clone = u.clone();
+    ibz_div(u, &mut rem, &u_clone, &gcd_uv);
+    debug_assert!(ibz_is_zero(&rem) != 0);
+    let v_clone = v.clone();
+    ibz_div(v, &mut rem, &v_clone, &gcd_uv);
+    debug_assert!(ibz_is_zero(&rem) != 0);
+
+    // 3. Pull down the precomputed bases at the two alternate orders.
+    let mut e1 = EcCurve::zero();
+    let mut e2 = EcCurve::zero();
+    copy_curve(
+        &mut e1,
+        &CURVES_WITH_ENDOMORPHISMS[index_order1 as usize].curve,
+    );
+    copy_curve(
+        &mut e2,
+        &CURVES_WITH_ENDOMORPHISMS[index_order2 as usize].curve,
+    );
+    let mut bas1 = EcBasis::zero();
+    let mut bas2 = EcBasis::zero();
+    copy_basis(
+        &mut bas1,
+        &CURVES_WITH_ENDOMORPHISMS[index_order1 as usize].basis_even,
+    );
+    copy_basis(
+        &mut bas2,
+        &CURVES_WITH_ENDOMORPHISMS[index_order2 as usize].basis_even,
+    );
+
+    // 4. theta = beta2 * conj(beta1) / n(lideal).
+    ibz_set(&mut theta.denom, 1);
+    let beta1_clone = beta1.clone();
+    quat_alg_conj(&mut theta, &beta1_clone);
+    let theta_clone = theta.clone();
+    quat_alg_mul(&mut theta, beta2, &theta_clone, &QUATALG_PINFTY);
+    let cur = theta.denom.clone();
+    ibz_mul(&mut theta.denom, &cur, &lideal.norm);
+
+    let mut idealu = QuatLeftIdeal::new();
+    let mut idealv = QuatLeftIdeal::new();
+    let mut fu_codomain = ThetaCoupleCurve::zero();
+    let mut fv_codomain = ThetaCoupleCurve::zero();
+
+    // pushed_points := { P, Q, P-Q } on the dim-2 product.
+    let mut pushed_points: [ThetaCouplePoint; 3] = [
+        ThetaCouplePoint::zero(),
+        ThetaCouplePoint::zero(),
+        ThetaCouplePoint::zero(),
+    ];
+    copy_point(&mut pushed_points[0].p1, &bas1.P);
+    copy_point(&mut pushed_points[1].p1, &bas1.Q);
+    copy_point(&mut pushed_points[2].p1, &bas1.PmQ);
+    ec_point_init(&mut pushed_points[0].p2);
+    ec_point_init(&mut pushed_points[1].p2);
+    ec_point_init(&mut pushed_points[2].p2);
+
+    // 5. phi_u: fixed-degree isogeny from index_order1 of degree u.
+    let ret_u = fixed_degree_isogeny_and_eval(
+        rng,
+        &mut idealu,
+        u,
+        true,
+        &mut fu_codomain,
+        &mut pushed_points,
+        3,
+        index_order1,
+    );
+    if ret_u == 0 {
+        return 0;
+    }
+
+    // Capture phi_u(bas1) as the new bas_u on Fu_codomain.E1.
+    let mut bas_u = EcBasis::zero();
+    copy_point(&mut bas_u.P, &pushed_points[0].p1);
+    copy_point(&mut bas_u.Q, &pushed_points[1].p1);
+    copy_point(&mut bas_u.PmQ, &pushed_points[2].p1);
+
+    // Half of the dim-2 kernel: (phi_u(bas1), 0) on Fu_codomain.E1.
+    let mut ker = ThetaKernelCouplePoints::zero();
+    copy_point(&mut ker.t1.p1, &bas_u.P);
+    copy_point(&mut ker.t2.p1, &bas_u.Q);
+    copy_point(&mut ker.t1m2.p1, &bas_u.PmQ);
+    let mut e01 = ThetaCoupleCurve::zero();
+    copy_curve(&mut e01.e1, &fu_codomain.e1);
+
+    // Reset pushed_points to (bas2, 0); call phi_v at degree v.
+    copy_point(&mut pushed_points[0].p1, &bas2.P);
+    copy_point(&mut pushed_points[1].p1, &bas2.Q);
+    copy_point(&mut pushed_points[2].p1, &bas2.PmQ);
+    ec_point_init(&mut pushed_points[0].p2);
+    ec_point_init(&mut pushed_points[1].p2);
+    ec_point_init(&mut pushed_points[2].p2);
+    let ret_v = fixed_degree_isogeny_and_eval(
+        rng,
+        &mut idealv,
+        v,
+        true,
+        &mut fv_codomain,
+        &mut pushed_points,
+        3,
+        index_order2,
+    );
+    if ret_v == 0 {
+        return 0;
+    }
+
+    // bas2 := phi_v(bas2) on Fv_codomain.E1.
+    copy_point(&mut bas2.P, &pushed_points[0].p1);
+    copy_point(&mut bas2.Q, &pushed_points[1].p1);
+    copy_point(&mut bas2.PmQ, &pushed_points[2].p1);
+
+    // 6. theta *= 1 / (d1 * n(connecting_ideal2)) mod 2^TORSION_EVEN_POWER.
+    ibz_pow(&mut two_pow, &ibz_const_two(), TORSION_EVEN_POWER as u32);
+    let mut inv_factor = d1.clone();
+    if index_order2 > 0 {
+        let cur = inv_factor.clone();
+        ibz_mul(
+            &mut inv_factor,
+            &cur,
+            &CONNECTING_IDEALS[index_order2 as usize].norm,
+        );
+    }
+    let mut inv_tmp = Ibz::zero();
+    let _ = ibz_invmod(&mut inv_tmp, &inv_factor, &two_pow);
+    for k in 0..4 {
+        let cur = theta.coord[k].clone();
+        ibz_mul(&mut theta.coord[k], &cur, &inv_tmp);
+    }
+
+    // Apply theta to bas2 on Fv_codomain.E1.
+    endomorphism_application_even_basis(
+        &mut bas2,
+        0,
+        &fv_codomain.e1,
+        &theta,
+        TORSION_EVEN_POWER as i32,
+    );
+
+    // Second half of the dim-2 kernel: (0, theta(phi_v(bas2))) on
+    // Fv_codomain.E1; set E01.E2 to that curve.
+    copy_point(&mut ker.t1.p2, &bas2.P);
+    copy_point(&mut ker.t2.p2, &bas2.Q);
+    copy_point(&mut ker.t1m2.p2, &bas2.PmQ);
+    copy_curve(&mut e01.e2, &fv_codomain.e1);
+
+    // 7. Drop the kernel down to order 2^exp.
+    let dim2_drop = (TORSION_EVEN_POWER as i32 - exp) as u32;
+    let mut tmp_pt;
+    tmp_pt = ker.t1.clone();
+    double_couple_point_iter(&mut ker.t1, dim2_drop, &tmp_pt, &e01);
+    tmp_pt = ker.t2.clone();
+    double_couple_point_iter(&mut ker.t2, dim2_drop, &tmp_pt, &e01);
+    tmp_pt = ker.t1m2.clone();
+    double_couple_point_iter(&mut ker.t1m2, dim2_drop, &tmp_pt, &e01);
+
+    debug_assert!(ibz_is_odd(u) != 0, "u must remain odd after gcd strip");
+
+    // 8. Evaluate (phi_u(bas1), 0) through the dim-2 isogeny of degree u*d1.
+    copy_point(&mut pushed_points[0].p1, &bas_u.P);
+    copy_point(&mut pushed_points[1].p1, &bas_u.Q);
+    copy_point(&mut pushed_points[2].p1, &bas_u.PmQ);
+    ec_point_init(&mut pushed_points[0].p2);
+    ec_point_init(&mut pushed_points[1].p2);
+    ec_point_init(&mut pushed_points[2].p2);
+
+    let mut theta_codomain = ThetaCoupleCurve::zero();
+    let ret_theta = theta_chain_compute_and_eval_randomized(
+        rng,
+        exp as u32,
+        &mut e01,
+        &ker,
+        false,
+        &mut theta_codomain,
+        &mut pushed_points,
+    );
+    if ret_theta == 0 {
+        return 0;
+    }
+    let t1_out = pushed_points[0].clone();
+    let t2_out = pushed_points[1].clone();
+    let t1m2_out = pushed_points[2].clone();
+
+    // 9. Select the correct codomain curve via a Weil-pairing check.
+    copy_point(&mut basis.P, &t1_out.p1);
+    copy_point(&mut basis.Q, &t2_out.p1);
+    copy_point(&mut basis.PmQ, &t1m2_out.p1);
+    copy_curve(codomain, &theta_codomain.e1);
+
+    let mut w0 = fp2_zero();
+    let mut w1 = fp2_zero();
+    sqisign_ec::weil(
+        &mut w0,
+        TORSION_EVEN_POWER as u32,
+        &bas1.P,
+        &bas1.Q,
+        &bas1.PmQ,
+        &mut e1,
+    );
+    {
+        let mut codomain_tmp = codomain.clone();
+        sqisign_ec::weil(
+            &mut w1,
+            TORSION_EVEN_POWER as u32,
+            &basis.P,
+            &basis.Q,
+            &basis.PmQ,
+            &mut codomain_tmp,
+        );
+    }
+    // (d1 * u * u) mod 2^TORSION_EVEN_POWER.
+    let mut digit_target = d1.clone();
+    let cur = digit_target.clone();
+    ibz_mul(&mut digit_target, &cur, u);
+    let cur = digit_target.clone();
+    ibz_mul(&mut digit_target, &cur, u);
+    let cur = digit_target.clone();
+    ibz_mod(&mut digit_target, &cur, &TORSION_PLUS_2POWER);
+    let mut digit_u = vec![0u64; NWORDS_ORDER];
+    sqisign_quaternion::ibz_to_digits(&mut digit_u, &digit_target);
+    let mut test_pow = fp2_zero();
+    sqisign_gf::fp2_pow_vartime(&mut test_pow, &w0, &digit_u);
+    if sqisign_gf::fp2_is_equal(&w1, &test_pow) == 0 {
+        copy_point(&mut basis.P, &t1_out.p2);
+        copy_point(&mut basis.Q, &t2_out.p2);
+        copy_point(&mut basis.PmQ, &t1m2_out.p2);
+        copy_curve(codomain, &theta_codomain.e2);
+    }
+
+    // 10. Apply beta1 scaled by 1 / (u * d1 * n(connecting_ideal1)) mod 2^TORSION_EVEN_POWER.
+    ibz_mul(&mut tmp, u, d1);
+    if index_order1 != 0 {
+        let cur = tmp.clone();
+        ibz_mul(
+            &mut tmp,
+            &cur,
+            &CONNECTING_IDEALS[index_order1 as usize].norm,
+        );
+    }
+    let mut inv_ud1 = Ibz::zero();
+    let _ = ibz_invmod(&mut inv_ud1, &tmp, &TORSION_PLUS_2POWER);
+    for k in 0..4 {
+        let cur = beta1.coord[k].clone();
+        ibz_mul(&mut beta1.coord[k], &cur, &inv_ud1);
+    }
+    endomorphism_application_even_basis(basis, 0, codomain, beta1, TORSION_EVEN_POWER as i32);
+
+    1
 }
 
-/// `dim2id2iso_arbitrary_isogeny_evaluation(basis, codomain, lideal)`.
-/// Wrapper around [`dim2id2iso_ideal_to_isogeny_clapotis`]. **Deferred**
-/// for the same reason.
-pub fn dim2id2iso_arbitrary_isogeny_evaluation(
-    _basis: &mut EcBasis,
-    _codomain: &mut EcCurve,
-    _lideal: &QuatLeftIdeal,
+/// `dim2id2iso_arbitrary_isogeny_evaluation(rng, basis, codomain, lideal)`.
+/// Mirrors the C entry point: wraps
+/// [`dim2id2iso_ideal_to_isogeny_clapotis`] with fresh scratch buffers
+/// and discards the intermediate `(beta1, beta2, u, v, d1, d2)`.
+pub fn dim2id2iso_arbitrary_isogeny_evaluation<R: RngSource>(
+    rng: &mut R,
+    basis: &mut EcBasis,
+    codomain: &mut EcCurve,
+    lideal: &QuatLeftIdeal,
 ) -> i32 {
-    panic!(
-        "dim2id2iso_arbitrary_isogeny_evaluation: RNG-driven dependency chain \
-         (quat_represent_integer); port pending."
-    );
+    let mut beta1 = QuatAlgElem::new();
+    let mut beta2 = QuatAlgElem::new();
+    let mut u = Ibz::zero();
+    let mut v = Ibz::zero();
+    let mut d1 = Ibz::zero();
+    let mut d2 = Ibz::zero();
+    dim2id2iso_ideal_to_isogeny_clapotis(
+        rng,
+        &mut beta1,
+        &mut beta2,
+        &mut u,
+        &mut v,
+        &mut d1,
+        &mut d2,
+        codomain,
+        basis,
+        lideal,
+        &QUATALG_PINFTY,
+    )
 }
 
-#[allow(dead_code)]
-fn _unused() {
-    // Symbols imported solely to allow the deferred bodies to compile
-    // when they are filled in. The arms are exercised by the RNG-driven
-    // ports in a follow-up unit.
-    let _ = (
-        copy_basis,
-        copy_curve,
-        copy_point,
-        ec_curve_normalize_a24,
-        ec_dbl_iter_basis,
-        ec_point_init,
-        TORSION_EVEN_POWER,
-        NWORDS_ORDER,
-        copy_bases_to_kernel,
-        double_couple_point_iter,
-        theta_chain_compute_and_eval_randomized::<sqisign_common::CtrDrbg>,
-        ThetaCoupleCurve::zero,
-        ThetaCouplePoint::zero,
-        ThetaKernelCouplePoints::zero,
-        HD_EXTRA_TORSION,
-        CURVES_WITH_ENDOMORPHISMS.len(),
-        NUM_ALTERNATE_EXTREMAL_ORDERS,
-        QUATALG_PINFTY.p.clone(),
-        TORSION_PLUS_2POWER.clone(),
-        ibz_mat_2x2_new(),
-        ibz_bitsize(&Ibz::zero()),
-        ibz_const_one(),
-        ibz_const_two(),
-        ibz_const_zero(),
-        ibz_get(&Ibz::zero()),
-        ibz_is_one(&Ibz::zero()),
-        ibz_is_odd(&Ibz::zero()),
-        ibz_is_even(&Ibz::zero()),
-        ibz_pow,
-        ibz_two_adic(&Ibz::zero()),
-        ibz_set,
-        ibz_neg,
-        endomorphism_application_even_basis,
-        QUAT_REPRES_BOUND_INPUT,
-        quat_alg_elem_copy,
-    );
-}
+
