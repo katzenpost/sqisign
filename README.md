@@ -336,9 +336,12 @@ reference. Any bug it has is the port's own.
 > byte-compatibility is not the same as security. The port has not
 > been reviewed by a cryptography auditor; it has not been hardened
 > against side channels; it relies on `num-bigint`, which is not
-> constant-time; and SQIsign itself is a Round 2 NIST candidate, not
-> a standardised algorithm. Do not use this crate in production
-> systems where a forgery or key-extraction would cause harm. If you
-> need a deployable post-quantum signature today, use one of the
-> NIST-standardised algorithms (ML-DSA or SLH-DSA) from a vetted
-> implementation.
+> constant-time and does not zeroize heap allocations; and SQIsign
+> itself is a Round 2 NIST candidate, not a standardised algorithm.
+> Do not use this crate in production systems where a forgery or
+> key-extraction would cause harm. If you need a deployable
+> post-quantum signature today, use one of the NIST-standardised
+> algorithms (ML-DSA or SLH-DSA) from a vetted implementation.
+>
+> For the threat model spelled out in detail, the known gaps, and
+> the pre-deployment checklist, see [`SECURITY.md`](SECURITY.md).
