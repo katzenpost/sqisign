@@ -1,6 +1,6 @@
 //! SQIsign `verification`: the top-level Verify protocol.
 //!
-//! Mirrors `vendor/the-sqisign/src/verification/ref/lvlx`. Ported in
+//! Mirrors `the-sqisign/src/verification/ref/lvlx`. Ported in
 //! **Phase 2, unit 9**, which closes the verification half of SQIsign.
 //!
 //! This crate is the public entry point for verifying a SQIsign signature.

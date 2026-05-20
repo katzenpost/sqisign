@@ -1,7 +1,7 @@
 //! SQIsign `common`: hashing (SHA-3 / SHAKE), seed expansion, PRNG, memory
 //! utilities.
 //!
-//! Mirrors `vendor/the-sqisign/src/common`. **Phase 1, unit 1.**
+//! Mirrors `the-sqisign/src/common`. **Phase 1, unit 1.**
 //!
 //! Ported so far:
 //! - [`hash::shake256`] is the one-shot SHAKE256 XOF boundary

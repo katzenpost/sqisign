@@ -1,6 +1,6 @@
 //! Rational arithmetic over `Ibz` (the `ibq_t` type).
 //!
-//! Mirrors `vendor/the-sqisign/src/quaternion/ref/generic/lll/rationals.c`.
+//! Mirrors `the-sqisign/src/quaternion/ref/generic/lll/rationals.c`.
 //! Used solely by the LLL verification path (the L2 core itself works in
 //! `dpe_t`); the rationals are exact, with no reductions to lowest terms
 //! except via the explicit [`ibq_reduce`].

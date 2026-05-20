@@ -1,6 +1,6 @@
 //! Quaternion lattices.
 //!
-//! Mirrors `vendor/the-sqisign/src/quaternion/ref/generic/lattice.c`.
+//! Mirrors `the-sqisign/src/quaternion/ref/generic/lattice.c`.
 //! A lattice is a 4x4 integer basis divided by a positive denominator.
 //! All bases are assumed to be in HNF unless explicitly noted otherwise.
 

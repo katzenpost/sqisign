@@ -6,7 +6,7 @@
 //!
 //! `fp_decode_reduce` is the arbitrary-length reducer the reference
 //! defines as a two-phase fold (see
-//! `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:752..791`): the
+//! `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:752..791`): the
 //! trailing partial block (`len % 32`) is decoded via `fp_decode` after
 //! zero-padding, then each preceding 32-byte block is partial-reduced
 //! via the `5 * 2^248 == 1 mod p` identity, re-encoded, decoded via

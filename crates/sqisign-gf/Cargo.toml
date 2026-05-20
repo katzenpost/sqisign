@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "SQIsign GF(p) and GF(p^2) arithmetic, the performance-critical layer. Mirrors vendor/the-sqisign/src/gf."
+description = "SQIsign GF(p) and GF(p^2) arithmetic, the performance-critical layer. Mirrors the-sqisign/src/gf."
 
 # No dependencies. The level-1 generic field is a self-contained
 # monty.py-generated word-array core (spint = uint64_t, Nlimbs 5,

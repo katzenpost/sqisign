@@ -1,4 +1,4 @@
-//! Direct port of `vendor/the-sqisign/src/id2iso/ref/lvlx/id2iso.c`.
+//! Direct port of `the-sqisign/src/id2iso/ref/lvlx/id2iso.c`.
 //!
 //! Six entry points: scalar multiplication driven by `ibz` scalars,
 //! kernel <-> ideal translation on the 2-power torsion, the in-place

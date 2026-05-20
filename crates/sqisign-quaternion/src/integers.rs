@@ -1,5 +1,5 @@
 //! Small-integer helpers (mirrors
-//! `vendor/the-sqisign/src/quaternion/ref/generic/integers.c`).
+//! `the-sqisign/src/quaternion/ref/generic/integers.c`).
 //!
 //! In scope this batch: `ibz_cornacchia_prime` only. The RNG-driven
 //! `ibz_generate_random_prime` is deferred.

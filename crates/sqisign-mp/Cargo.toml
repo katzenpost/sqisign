@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "SQIsign multiprecision integer arithmetic: fixed-width little-endian word arrays. Mirrors vendor/the-sqisign/src/mp."
+description = "SQIsign multiprecision integer arithmetic: fixed-width little-endian word arrays. Mirrors the-sqisign/src/mp."
 
 # No dependencies. The reference mp module is a self-contained word-array
 # library (no GCD/XGCD, no arbitrary precision), so the Rust port carries no

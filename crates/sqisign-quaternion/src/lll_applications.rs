@@ -1,6 +1,6 @@
 //! LLL-derived helpers on lattices and ideals.
 //!
-//! Mirrors `vendor/the-sqisign/src/quaternion/ref/generic/lll/lll_applications.c`.
+//! Mirrors `the-sqisign/src/quaternion/ref/generic/lll/lll_applications.c`.
 //! The RNG-driven boundary [`quat_lideal_prime_norm_reduced_equivalent`]
 //! takes `&mut impl RngSource` as its first formal parameter, replacing
 //! the reference's thread-local DRBG global.

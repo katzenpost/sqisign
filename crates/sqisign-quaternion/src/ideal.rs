@@ -1,6 +1,6 @@
 //! Left ideals and orders of quaternion algebras.
 //!
-//! Mirrors `vendor/the-sqisign/src/quaternion/ref/generic/ideal.c`.
+//! Mirrors `the-sqisign/src/quaternion/ref/generic/ideal.c`.
 //! `quat_lideal_t` carries a lattice, a norm, and a borrowed reference
 //! to its parent (maximal) order.
 

@@ -31,7 +31,8 @@
  * This file is not built by cargo; cargo's `examples/` directory under a
  * cdylib crate is treated as a *Rust* example. The KAT vector embedded
  * below is the first record of PQCsignKAT_353_SQIsign_lvl1.rsp; the
- * canonical KAT files live in vendor/the-sqisign/KAT/.
+ * canonical KAT file lives at kat/PQCsignKAT_353_SQIsign_lvl1.rsp at
+ * the repository root.
  */
 
 #include <stdio.h>

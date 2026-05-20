@@ -1,6 +1,6 @@
 //! Quaternion algebra and its elements.
 //!
-//! Mirrors `vendor/the-sqisign/src/quaternion/ref/generic/algebra.c` and
+//! Mirrors `the-sqisign/src/quaternion/ref/generic/algebra.c` and
 //! the constructors from `finit.c`. The quaternion algebra modelled here
 //! is ramified at `p = 3 (mod 4)` and infinity; elements are represented
 //! in the basis `(1, i, j, ij)` with `i^2 = -1` and `j^2 = -p`.

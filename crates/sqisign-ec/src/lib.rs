@@ -2,7 +2,7 @@
 //! Jacobian coordinates, plus degree-2 and degree-4 isogeny construction
 //! and evaluation.
 //!
-//! Mirrors `vendor/the-sqisign/src/ec`. Phase 1 unit 4 ports the core
+//! Mirrors `the-sqisign/src/ec`. Phase 1 unit 4 ports the core
 //! curve and point arithmetic from `lvlx/ec.c`, the Jacobian arithmetic
 //! from `lvlx/ec_jac.c`, the short isogeny primitives from `lvlx/xeval.c`
 //! and `lvlx/xisog.c`, the long 2-isogeny chains and curve isomorphisms
@@ -19,7 +19,7 @@
 //! ## Defects observed
 //!
 //! - `xeval_4_singular` and `xisog_4_singular` are declared in
-//!   `vendor/the-sqisign/src/ec/ref/include/isog.h` but never defined
+//!   `the-sqisign/src/ec/ref/include/isog.h` but never defined
 //!   anywhere in the upstream tree (no callers either): they are dead
 //!   declarations. The port skips them; if upstream ever adds bodies,
 //!   we add the boundaries then.
@@ -38,7 +38,7 @@
 //!   the same typo on the C side. Not patched here; the literal port is
 //!   the contract.
 //! - `ec_dlog_2_tate_to_full` is declared in
-//!   `vendor/the-sqisign/src/ec/ref/include/biextension.h` but never
+//!   `the-sqisign/src/ec/ref/include/biextension.h` but never
 //!   defined anywhere in the upstream tree. Skipped on the same
 //!   grounds as `xeval_4_singular` above.
 
@@ -59,13 +59,13 @@ use sqisign_mp::{mp_add, mp_shiftr, mp_sub, multiple_mp_shiftl, select_ct, swap_
 
 /// The power of two dividing `p + 1`. Mirrors the C macro
 /// `TORSION_EVEN_POWER` defined in
-/// `vendor/the-sqisign/src/precomp/ref/lvl1/include/ec_params.h`.
+/// `the-sqisign/src/precomp/ref/lvl1/include/ec_params.h`.
 pub const TORSION_EVEN_POWER: usize = 248;
 
 /// The odd cofactor `(p + 1) / 2^TORSION_EVEN_POWER`, kept as a
 /// single-element array to mirror the C declaration
 /// `const digit_t p_cofactor_for_2f[1] = {5};` in
-/// `vendor/the-sqisign/src/precomp/ref/lvl1/ec_params.c`.
+/// `the-sqisign/src/precomp/ref/lvl1/ec_params.c`.
 pub const P_COFACTOR_FOR_2F: [u64; 1] = [5];
 
 /// Bitlength of `P_COFACTOR_FOR_2F`. Mirrors
@@ -1613,7 +1613,7 @@ pub fn xisog_4(kps: &mut EcKps4, b: &mut EcPoint, p: EcPoint) {
 /// Precomputed x-coordinate of the basis point P on the curve E0 (A = 0).
 /// Mirrors the `RADIX == 64`, non-Broadwell branch of
 /// `const fp2_t BASIS_E0_PX` in
-/// `vendor/the-sqisign/src/precomp/ref/lvl1/e0_basis.c`.
+/// `the-sqisign/src/precomp/ref/lvl1/e0_basis.c`.
 pub const BASIS_E0_PX: Fp2 = Fp2 {
     re: [
         0x5bcab12000c08,
@@ -1634,7 +1634,7 @@ pub const BASIS_E0_PX: Fp2 = Fp2 {
 /// Precomputed x-coordinate of the basis point Q on the curve E0 (A = 0).
 /// Mirrors the `RADIX == 64`, non-Broadwell branch of
 /// `const fp2_t BASIS_E0_QX` in
-/// `vendor/the-sqisign/src/precomp/ref/lvl1/e0_basis.c`.
+/// `the-sqisign/src/precomp/ref/lvl1/e0_basis.c`.
 pub const BASIS_E0_QX: Fp2 = Fp2 {
     re: [
         0x21dd55b97832f,

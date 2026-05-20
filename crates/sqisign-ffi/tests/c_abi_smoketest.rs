@@ -28,9 +28,7 @@ fn kat_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
-        .join("vendor")
-        .join("the-sqisign")
-        .join("KAT")
+        .join("kat")
         .join("PQCsignKAT_353_SQIsign_lvl1.rsp")
 }
 

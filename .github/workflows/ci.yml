@@ -12,17 +12,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Confirm submodule matches the pin
-        run: |
-          pin="$(grep -oE '`[0-9a-f]{40}`' UPSTREAM.md | head -1 | tr -d '`')"
-          have="$(git -C vendor/the-sqisign rev-parse HEAD)"
-          test "$pin" = "$have" || {
-            echo "::error::vendor/the-sqisign at $have, UPSTREAM.md pins $pin"
-            exit 1
-          }
 
       - uses: dtolnay/rust-toolchain@stable
         with:

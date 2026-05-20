@@ -1,10 +1,10 @@
 //! SQIsign `gf`: GF(p) and GF(p^2) arithmetic, the performance-critical
 //! layer.
 //!
-//! Mirrors `vendor/the-sqisign/src/gf`. **Phase 1, unit 3.** This is a
+//! Mirrors `the-sqisign/src/gf`. **Phase 1, unit 3.** This is a
 //! genuine reimplementation, not a standardized primitive wired in: the
 //! level-1 generic field is a self-contained `monty.py`-generated
-//! word-array core (`vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c`,
+//! word-array core (`the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c`,
 //! `spint = uint64_t`, `Nlimbs 5`, `Radix 51`, prime
 //! `p5248 = 5 * 2^248 - 1`), with no external-crate semantic risk and no
 //! numeric dependency, exactly as `sqisign-mp` is for the `mp` word-array
@@ -81,7 +81,7 @@
 //!   committed C-derived vector replays bit-for-bit.
 //! - [`fp_select`] is `fp_select(d, a0, a1, ctl)`, the branchless
 //!   constant-time conditional select defined in
-//!   `vendor/the-sqisign/src/gf/ref/lvlx/fp.c`. The contract is narrow:
+//!   `the-sqisign/src/gf/ref/lvlx/fp.c`. The contract is narrow:
 //!   `ctl` is required to be either `0x00000000` or `0xFFFFFFFF`; on
 //!   `0x00000000` the destination is set to `a0`, on `0xFFFFFFFF` to
 //!   `a1`. The reference computes a per-limb bit blend
@@ -837,7 +837,7 @@ const MONTGOMERY_ONE: Fp = [
 ///
 /// Mirrors the reference's
 /// `void fp_select(fp_t *d, const fp_t *a0, const fp_t *a1, uint32_t ctl)`
-/// from `vendor/the-sqisign/src/gf/ref/lvlx/fp.c` exactly:
+/// from `the-sqisign/src/gf/ref/lvlx/fp.c` exactly:
 ///
 /// ```c
 /// /*
@@ -891,7 +891,7 @@ const MODCSW_R: u64 = 0x3cc3_c33c_5aa5_a55a;
 ///
 /// Mirrors the reference's
 /// `static void modcsw(int b, volatile spint *g, volatile spint *f)`
-/// from `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:409..424`
+/// from `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:409..424`
 /// exactly:
 ///
 /// ```c
@@ -969,7 +969,7 @@ fn modcsw(b: u64, g: &mut Fp, f: &mut Fp) {
 ///
 /// Mirrors the reference's
 /// `void fp_cswap(fp_t *a, fp_t *b, uint32_t ctl)` from
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:592..596`:
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:592..596`:
 ///
 /// ```c
 /// void
@@ -1011,7 +1011,7 @@ const P4: u64 = 0x500000000000;
 ///
 /// Mirrors the reference's
 /// `inline static void modmul(const spint *a, const spint *b, spint *c)`
-/// from `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:98..153`
+/// from `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:98..153`
 /// statement-for-statement; the column structure and the order of every
 /// `t +=` are preserved so the bit-exact oracle correspondence at the
 /// `fp_t` boundary is visible at the source level.
@@ -1149,7 +1149,7 @@ pub fn fp_mul(out: &mut Fp, a: &Fp, b: &Fp) {
 ///
 /// Mirrors the reference's
 /// `inline static void modsqr(const spint *a, spint *c)` from
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:156..220`
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:156..220`
 /// statement-for-statement.
 ///
 /// `modsqr` is the squaring specialisation of `modmul`. Where `modmul`
@@ -1298,7 +1298,7 @@ pub fn fp_sqr(out: &mut Fp, a: &Fp) {
 /// field: the precomputed constant `2^-1 * R mod p` in the unsaturated
 /// radix-2^51 limb layout, transcribed verbatim from the reference's
 /// `static const digit_t TWO_INV[NWORDS_FIELD]` at
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:532..536`:
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:532..536`:
 ///
 /// ```c
 /// // Montgomery representation of 2^-1
@@ -1328,7 +1328,7 @@ const TWO_INV: Fp = [
 /// radix-2^51 representation, reduced to less than `2p`.
 ///
 /// Mirrors the reference's `void fp_half(fp_t *out, const fp_t *a)`
-/// (`vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:646..650`), which
+/// (`the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:646..650`), which
 /// is the one-liner `modmul(TWO_INV, *a, *out);`. The port is the same
 /// one-liner: a single `modmul` call with the constant [`TWO_INV`] (the
 /// Montgomery representative of `2^-1 mod p`) as the first operand and
@@ -1367,7 +1367,7 @@ pub fn fp_half(out: &mut Fp, a: &Fp) {
 /// field: the precomputed constant `3^-1 * R mod p` in the unsaturated
 /// radix-2^51 limb layout, transcribed verbatim from the reference's
 /// `static const digit_t THREE_INV[NWORDS_FIELD]` at
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:538..542`:
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:538..542`:
 ///
 /// ```c
 /// // Montgomery representation of 3^-1
@@ -1397,7 +1397,7 @@ const THREE_INV: Fp = [
 /// redundant radix-2^51 representation, reduced to less than `2p`.
 ///
 /// Mirrors the reference's `void fp_div3(fp_t *out, const fp_t *a)`
-/// (`vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:658..662`), which
+/// (`the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:658..662`), which
 /// is the one-liner `modmul(THREE_INV, *a, *out);`. The port is the
 /// same one-liner: a single `modmul` call with the constant
 /// [`THREE_INV`] (the Montgomery representative of `3^-1 mod p`) as the
@@ -1730,7 +1730,7 @@ pub fn fp_is_equal(a: &Fp, b: &Fp) -> u32 {
 /// constant `nres` multiplies a positional residue by to enter the
 /// Montgomery domain. Transcribed verbatim from the reference's
 /// `static void nres(const spint *m, spint *n)` at
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:297..302`:
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:297..302`:
 ///
 /// ```c
 /// const spint c[5] = {0x4cccccccccf5cu, 0x1999999999999u,
@@ -1862,7 +1862,7 @@ fn modint(x: i32, a: &mut Fp) {
 ///
 /// Mirrors the reference's
 /// `void fp_set_small(fp_t *x, const digit_t val)` at
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:550..554`:
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:550..554`:
 ///
 /// ```c
 /// void fp_set_small(fp_t *x, const digit_t val) {
@@ -1912,7 +1912,7 @@ pub fn fp_set_small(out: &mut Fp, val: u64) {
 ///
 /// Mirrors the reference's
 /// `inline static void modmli(const spint *a, int b, spint *c)` at
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:372..376`:
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:372..376`:
 ///
 /// ```c
 /// inline static void modmli(const spint *a, int b, spint *c) {
@@ -1952,7 +1952,7 @@ fn modmli(a: &Fp, b: i32, c: &mut Fp) {
 ///
 /// Mirrors the reference's `void fp_mul_small(fp_t *x, const fp_t *a,
 /// const uint32_t val)` at
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:557..560`:
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:557..560`:
 ///
 /// ```c
 /// void fp_mul_small(fp_t *x, const fp_t *a, const uint32_t val) {
@@ -2010,7 +2010,7 @@ pub fn fp_mul_small(out: &mut Fp, a: &Fp, val: u32) {
 ///
 /// Mirrors the reference's
 /// `static void modnsqr(spint *a, int n)` at
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:228..233` exactly:
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:228..233` exactly:
 ///
 /// ```c
 /// static void modnsqr(spint *a, int n) {
@@ -2048,7 +2048,7 @@ fn modnsqr(a: &mut Fp, n: i32) {
 ///
 /// Mirrors the reference's
 /// `static void modpro(const spint *w, spint *z)` at
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:236..281`
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:236..281`
 /// statement-for-statement. The reference is a hand-built fixed addition
 /// chain of [`modsqr`]/[`modmul`]/[`modnsqr`] calls (see the upstream
 /// comment "// Calculate progenitor"); the port preserves the exact
@@ -2188,7 +2188,7 @@ fn modpro(w: &Fp, z: &mut Fp) {
 /// Compute the modular inverse `z = x^-1 mod p` via Fermat (`x * x^(p-2)
 /// == 1 mod p`). Mirrors the reference's
 /// `static void modinv(const spint *x, const spint *h, spint *z)` at
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:284..295` exactly:
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:284..295` exactly:
 ///
 /// ```c
 /// static void modinv(const spint *x, const spint *h, spint *z) {
@@ -2238,7 +2238,7 @@ fn modinv(x: &Fp, h: Option<&Fp>, z: &mut Fp) {
 ///
 /// Mirrors the reference's
 /// `static int modis1(const spint *a)` at
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:317..329` exactly:
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:317..329` exactly:
 ///
 /// ```c
 /// static int modis1(const spint *a) {
@@ -2293,7 +2293,7 @@ fn modis1(a: &Fp) -> u32 {
 ///
 /// Mirrors the reference's
 /// `static int modqr(const spint *h, const spint *x)` at
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:379..389` exactly:
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:379..389` exactly:
 ///
 /// ```c
 /// static int modqr(const spint *h, const spint *x) {
@@ -2351,7 +2351,7 @@ fn modqr(h: Option<&Fp>, x: &Fp) -> u32 {
 ///
 /// Mirrors the reference's
 /// `static void modsqrt(const spint *x, const spint *h, spint *r)` at
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:427..437` exactly:
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:427..437` exactly:
 ///
 /// ```c
 /// static void modsqrt(const spint *x, const spint *h, spint *r) {
@@ -2392,7 +2392,7 @@ fn modsqrt(x: &Fp, h: Option<&Fp>, r: &mut Fp) {
 /// In-place left shift by `n < 51` bits across the five limbs of the
 /// redundant radix-2^51 layout. Mirrors the reference's
 /// `static void modshl(unsigned int n, spint *a)` at
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:440..447` exactly:
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:440..447` exactly:
 ///
 /// ```c
 /// static void modshl(unsigned int n, spint *a) {
@@ -2436,7 +2436,7 @@ fn modshl(n: u32, a: &mut Fp) {
 ///
 /// Mirrors the reference's
 /// `static int modshr(unsigned int n, spint *a)` at
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:450..458` exactly:
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:450..458` exactly:
 ///
 /// ```c
 /// static int modshr(unsigned int n, spint *a) {
@@ -2477,7 +2477,7 @@ fn modshr(n: u32, a: &mut Fp) -> u64 {
 ///
 /// Transcribed verbatim from the reference's
 /// `static const digit_t R2[NWORDS_FIELD]` at
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:544..548`:
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:544..548`:
 ///
 /// ```c
 /// // Montgomery representation of 2^256
@@ -2506,7 +2506,7 @@ const R2: Fp = [
 /// GF(p) modular exponentiation by `(p-3)/4` (the "progenitor" of `a`).
 ///
 /// Mirrors the reference's `void fp_exp3div4(fp_t *out, const fp_t *a)`
-/// at `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:652..656`:
+/// at `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:652..656`:
 ///
 /// ```c
 /// void fp_exp3div4(fp_t *out, const fp_t *a) {
@@ -2534,7 +2534,7 @@ pub fn fp_exp3div4(out: &mut Fp, a: &Fp) {
 /// the canonical zero); the port mirrors that behaviour.
 ///
 /// Mirrors the reference's `void fp_inv(fp_t *x)` at
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:628..632`:
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:628..632`:
 ///
 /// ```c
 /// void fp_inv(fp_t *x) {
@@ -2564,7 +2564,7 @@ pub fn fp_inv(x: &mut Fp) {
 /// zero), else `0`.
 ///
 /// Mirrors the reference's `uint32_t fp_is_square(const fp_t *a)` at
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:634..638`:
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:634..638`:
 ///
 /// ```c
 /// uint32_t fp_is_square(const fp_t *a) {
@@ -2591,7 +2591,7 @@ pub fn fp_is_square(a: &Fp) -> u32 {
 /// follows). Caller should first test with [`fp_is_square`].
 ///
 /// Mirrors the reference's `void fp_sqrt(fp_t *a)` at
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:640..644`:
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:640..644`:
 ///
 /// ```c
 /// void fp_sqrt(fp_t *a) {
@@ -2617,7 +2617,7 @@ pub fn fp_sqrt(a: &mut Fp) {
 /// GF(p) canonical serialization to 32 little-endian bytes.
 ///
 /// Mirrors the reference's `void fp_encode(void *dst, const fp_t *a)`
-/// at `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:664..675`:
+/// at `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:664..675`:
 ///
 /// ```c
 /// void fp_encode(void *dst, const fp_t *a) {
@@ -2655,7 +2655,7 @@ pub fn fp_encode(dst: &mut [u8; 32], a: &Fp) {
 /// canonical range `[0, p)`, else `0` (in the non-canonical case, the
 /// output `d` is zeroed). Mirrors the reference's `uint32_t
 /// fp_decode(fp_t *d, const void *src)` at
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:677..698`:
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:677..698`:
 ///
 /// ```c
 /// uint32_t fp_decode(fp_t *d, const void *src) {
@@ -2720,7 +2720,7 @@ pub fn fp_decode(d: &mut Fp, src: &[u8; 32]) -> u32 {
 /// outgoing carry bit. Mirrors the reference's
 /// `static inline unsigned char add_carry(unsigned char cc, spint a,
 /// spint b, spint *d)` at
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:700..706` exactly:
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:700..706` exactly:
 ///
 /// ```c
 /// static inline unsigned char
@@ -2745,7 +2745,7 @@ fn add_carry(cc: u8, a: u64, b: u64, d: &mut u64) -> u8 {
 /// 2^248 - 1`, in place on a four-`u64` array (NOT the Montgomery 5-limb
 /// form). Mirrors the reference's
 /// `static void partial_reduce(spint *out, const spint *src)` at
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:708..726` exactly:
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:708..726` exactly:
 ///
 /// ```c
 /// static void partial_reduce(spint *out, const spint *src) {
@@ -2798,7 +2798,7 @@ fn partial_reduce(out: &mut [u64; 4], src: &[u64; 4]) {
 /// Little-endian decoding of an 8-byte slice as a `u64`. Mirrors the
 /// reference's
 /// `static inline uint64_t dec64le(const void *src)` at
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:743..750` exactly.
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:743..750` exactly.
 /// `u64::from_le_bytes` is the same bit pattern; the port spells out
 /// the shift-and-OR chain in the same form the reference does so the
 /// source-level correspondence is visible at a glance.
@@ -2816,7 +2816,7 @@ fn dec64le(src: &[u8]) -> u64 {
 /// Little-endian encoding of a `u64` as an 8-byte slice. Mirrors the
 /// reference's
 /// `static inline void enc64le(void *dst, uint64_t x)` at
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:729..741` exactly.
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:729..741` exactly.
 /// `x.to_le_bytes()` is the same bit pattern; the port spells out the
 /// individual byte writes in the same form the reference does so the
 /// source-level correspondence is visible at a glance.
@@ -2834,7 +2834,7 @@ fn enc64le(dst: &mut [u8], x: u64) {
 /// GF(p) deserialization-and-reduction from an arbitrary-length byte
 /// slice. Mirrors the reference's
 /// `void fp_decode_reduce(fp_t *d, const void *src, size_t len)` at
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:752..791` exactly:
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:752..791` exactly:
 ///
 /// ```c
 /// void fp_decode_reduce(fp_t *d, const void *src, size_t len) {
@@ -2939,7 +2939,7 @@ pub fn fp_decode_reduce(d: &mut Fp, src: &[u8]) {
 }
 
 // ---------------------------------------------------------------------------
-// GF(p^2) layer. Mirrors `vendor/the-sqisign/src/gf/ref/lvlx/fp2.c`.
+// GF(p^2) layer. Mirrors `the-sqisign/src/gf/ref/lvlx/fp2.c`.
 //
 // The level-1 quadratic extension is `Fp[X]/(X^2 + 1)`, the reference's own
 // comment at the top of `fp2.c` ("Arithmetic modulo X^2 + 1"). An element is
@@ -2950,7 +2950,7 @@ pub fn fp_decode_reduce(d: &mut Fp, src: &[u8]) {
 
 /// Byte length of the canonical `fp2` serialization, the
 /// `FP2_ENCODED_BYTES` constant from
-/// `vendor/the-sqisign/src/precomp/ref/lvl1/include/encoded_sizes.h`.
+/// `the-sqisign/src/precomp/ref/lvl1/include/encoded_sizes.h`.
 /// It is exactly `2 * FP_ENCODED_BYTES` (64 = 2 * 32) for this level: the
 /// reference's `fp2_encode` writes `re` then `im` back to back.
 pub const FP2_ENCODED_BYTES: usize = 64;

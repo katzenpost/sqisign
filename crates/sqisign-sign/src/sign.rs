@@ -1,6 +1,6 @@
 //! `sign.c` port: SQIsign Sign protocol.
 //!
-//! Mirrors `vendor/the-sqisign/src/signature/ref/lvlx/sign.c`. The
+//! Mirrors `the-sqisign/src/signature/ref/lvlx/sign.c`. The
 //! private helpers (`commit`, `compute_challenge_ideal_signature`, etc.)
 //! are preserved as private functions in this module with the same
 //! orchestration as the reference. RNG flows in through one

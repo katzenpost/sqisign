@@ -1,7 +1,7 @@
 //! RNG-driven `ibz_t` helpers.
 //!
 //! Mirrors the `ibz_rand_*` family in
-//! `vendor/the-sqisign/src/quaternion/ref/generic/intbig.c` and the
+//! `the-sqisign/src/quaternion/ref/generic/intbig.c` and the
 //! random-prime helper in `integers.c`. Every entry point in this module
 //! takes `&mut impl RngSource` and draws bytes through it; the C
 //! reference reaches a thread-local global instead, but the byte

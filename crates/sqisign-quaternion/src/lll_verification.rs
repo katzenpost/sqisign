@@ -1,6 +1,6 @@
 //! LLL verification (oracle for non-unique L2 output).
 //!
-//! Mirrors `vendor/the-sqisign/src/quaternion/ref/generic/lll/lll_verification.c`.
+//! Mirrors `the-sqisign/src/quaternion/ref/generic/lll/lll_verification.c`.
 //! Given a candidate reduced basis, asserts that it satisfies the
 //! size-reduction and Lovász conditions for the L2 parameters `(delta, eta)`
 //! defined in `lll_internals.h`.

@@ -1,7 +1,7 @@
 //! Double-precision-exponent arithmetic (`dpe.h`).
 //!
 //! Mirrors the header-only INRIA/LORIA library
-//! `vendor/the-sqisign/src/quaternion/ref/generic/internal_quaternion_headers/dpe.h`
+//! `the-sqisign/src/quaternion/ref/generic/internal_quaternion_headers/dpe.h`
 //! at the precision required by the L2 LLL reduction. A `Dpe` value is a
 //! pair `(mantissa: f64, exp: i32)` representing the real number
 //! `mantissa * 2^exp` with the invariant, post-normalisation, that the
@@ -9,7 +9,7 @@
 //! `i32::MIN`).
 //!
 //! The C reference compiles in `DPE_USE_DOUBLE` mode and consumes the
-//! header through `vendor/the-sqisign/src/quaternion/ref/generic/lll/l2.c`
+//! header through `the-sqisign/src/quaternion/ref/generic/lll/l2.c`
 //! and friends. We mirror that mode only: long-double and quad variants are
 //! not in scope.
 //!
@@ -20,7 +20,7 @@
 //! reproducible across host CPUs running the standard rounding mode. The
 //! single externally-visible non-bit-exact spot is the integer-to-dpe
 //! conversion [`dpe_set_z`], which mirrors the **mini-gmp** quirk in
-//! `mpz_get_d_2exp` (see `vendor/the-sqisign/src/mini-gmp/mini-gmp-extra.c`)
+//! `mpz_get_d_2exp` (see `the-sqisign/src/mini-gmp/mini-gmp-extra.c`)
 //! rather than upstream GMP: it returns the bitsize of the integer as the
 //! exponent and a mantissa from `frexp(mpz_get_d(top-shifted))`. Both the C
 //! cdump harness and the Rust port use this exact convention so the

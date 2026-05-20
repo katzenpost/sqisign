@@ -17,7 +17,7 @@ use sqisign_quaternion::{
 use sqisign_verify::PublicKey;
 
 /// `secret_key_t`: the secret key bundle. Mirrors the C struct of the
-/// same name in `vendor/the-sqisign/src/signature/ref/include/signature.h`.
+/// same name in `the-sqisign/src/signature/ref/include/signature.h`.
 #[derive(Clone, Debug)]
 pub struct SecretKey {
     pub secret_ideal: QuatLeftIdeal,

@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "SQIsign KeyGen and Sign protocols. Pulls the full quaternion/id2iso paths. Mirrors vendor/the-sqisign/src/signature."
+description = "SQIsign KeyGen and Sign protocols. Pulls the full quaternion/id2iso paths. Mirrors the-sqisign/src/signature."
 
 [dependencies]
 sqisign-common.workspace = true

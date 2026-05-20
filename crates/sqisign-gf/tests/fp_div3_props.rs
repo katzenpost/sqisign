@@ -3,7 +3,7 @@
 //! `fp_div3` operates on the same **redundant, non-canonical** radix-2^51
 //! form as `fp_add`/`fp_sub`/`fp_neg`/`fp_mul`/`fp_sqr`/`fp_half`: it is
 //! the one-liner `modmul(THREE_INV, *a, *out);` (see
-//! `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:658..662`), so a
+//! `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:658..662`), so a
 //! residue class has many limb encodings and the underlying `modmul`
 //! reduces only to "less than 2p" (in the Montgomery domain), leaving
 //! limb 4 *fully unmasked* (the reference's final write is
@@ -85,7 +85,7 @@ use sqisign_gf::{fp_add, fp_div3, fp_is_equal, fp_mul, Fp, NWORDS_FIELD};
 const RADIX: u32 = 51;
 
 /// Montgomery representative of `3^-1 mod p`, transcribed verbatim from
-/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:538..542`. Kept in
+/// `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:538..542`. Kept in
 /// sync with the internal `THREE_INV` constant in `sqisign_gf::lib`; the
 /// test crate cannot access private items so the constant is duplicated
 /// here. Any drift between the two is exactly what property (1) catches

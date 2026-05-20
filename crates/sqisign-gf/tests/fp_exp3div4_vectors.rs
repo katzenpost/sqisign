@@ -9,7 +9,7 @@
 //! reference's `modpro` leaves in memory, including its full 64-bit
 //! truncated (unmasked) limb 4. `fp_exp3div4` is the one-liner
 //! `modpro(*a, *out)` (see
-//! `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:652..656`): the
+//! `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:652..656`): the
 //! progenitor, `a^((p-3)/4) mod p`, the building block the rest of the
 //! chain (`fp_inv`, `fp_sqrt`, `fp_is_square`) folds further to obtain
 //! inverses, square roots, and the Euler criterion. The unary record

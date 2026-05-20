@@ -1,6 +1,6 @@
 //! SQIsign `mp`: multiprecision integer arithmetic.
 //!
-//! Mirrors `vendor/the-sqisign/src/mp/ref/generic/mp.c`. **Phase 1,
+//! Mirrors `the-sqisign/src/mp/ref/generic/mp.c`. **Phase 1,
 //! unit 2.** Unlike `common`, this is a genuine reimplementation, not a
 //! standardized primitive wired in: the reference is a fixed-width
 //! word-array library (`digit_t = uint64_t`, little-endian limbs, a

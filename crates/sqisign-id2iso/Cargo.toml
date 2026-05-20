@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "SQIsign ideal-to-isogeny translation. Verification uses one direction; signing uses both. Mirrors vendor/the-sqisign/src/id2iso."
+description = "SQIsign ideal-to-isogeny translation. Verification uses one direction; signing uses both. Mirrors the-sqisign/src/id2iso."
 
 [dependencies]
 sqisign-common.workspace = true

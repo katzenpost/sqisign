@@ -1,6 +1,6 @@
 //! SQIsign `hd`: (2,2)-isogenies in the theta model.
 //!
-//! Mirrors `vendor/the-sqisign/src/hd`. The module operates on abelian
+//! Mirrors `the-sqisign/src/hd`. The module operates on abelian
 //! surfaces (dimension 2): points are pairs of [`EcPoint`]s, curves are
 //! pairs of [`EcCurve`]s, and isogenies are computed in the theta model.
 //! All arithmetic flows through [`sqisign_gf`] and [`sqisign_ec`].
@@ -1772,7 +1772,7 @@ fn theta_isogeny_eval(out: &mut ThetaPoint, phi: &ThetaIsogeny, p: &ThetaPoint) 
 
 /// Sample a uniform index in `[0, 5]` from the RNG via four-byte
 /// rejection sampling. Mirrors the static `sample_random_index` helper in
-/// `vendor/the-sqisign/src/hd/ref/lvlx/theta_isogenies.c`: a 32-bit seed
+/// `the-sqisign/src/hd/ref/lvlx/theta_isogenies.c`: a 32-bit seed
 /// is drawn in little-endian order, the top four values (those with
 /// `seed >= 2^32 - 4`) are rejected to remove the modulo-by-six bias, and
 /// the accepted seed is reduced via the Granlund-Möller constant

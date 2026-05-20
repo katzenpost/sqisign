@@ -7,7 +7,7 @@
 //! result) shape is preserved.
 //!
 //! `fp_decode` is the modified `modimp` (see
-//! `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:677..698`): fold the
+//! `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:677..698`): fold the
 //! 32 bytes into `d` in descending address order via `modshl(8) + add`
 //! into limb 0, then `modfsb` returns 1 iff the decoded value is below
 //! `p`, the reference negates that to a full-width mask `res`, runs

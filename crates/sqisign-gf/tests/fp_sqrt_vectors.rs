@@ -4,7 +4,7 @@
 //! reference's `digit_t = uint64_t` memory layout, `NWORDS_FIELD == 5`).
 //!
 //! `fp_sqrt` is the *in-place* one-liner `modsqrt(*a, NULL, *a)` (see
-//! `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:640..644`). The
+//! `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:640..644`). The
 //! cdump harness snapshots the input into a separate `a` and the
 //! in-place result into `c`, so the recorded record carries both sides
 //! of the in-place mutation; the port wrapper snapshots `*a` into a

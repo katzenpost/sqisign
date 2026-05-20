@@ -1,7 +1,7 @@
 //! Top-level benchmark for [`sqisign_verify::protocols_verify`].
 //!
 //! Loads the first recorded NIST KAT response from
-//! `vendor/the-sqisign/KAT/PQCsignKAT_353_SQIsign_lvl1.rsp`, decodes its
+//! `the-sqisign/KAT/PQCsignKAT_353_SQIsign_lvl1.rsp`, decodes its
 //! public key and signature, and times one verification per iteration.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};

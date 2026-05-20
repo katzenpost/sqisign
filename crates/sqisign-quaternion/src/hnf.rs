@@ -1,6 +1,6 @@
 //! Hermite Normal Form for 4-row integer lattices.
 //!
-//! Mirrors `vendor/the-sqisign/src/quaternion/ref/generic/hnf/hnf.c`,
+//! Mirrors `the-sqisign/src/quaternion/ref/generic/hnf/hnf.c`,
 //! `hnf_internal.c`, and `ibz_division.c`. The reference's `ibz_xgcd` is
 //! a thin wrapper around GMP's `mpz_gcdext`; we re-implement it on top
 //! of `num-bigint`'s extended GCD, matching GMP's documented uniqueness

@@ -1,6 +1,6 @@
 //! Dimension-2 ibz vectors and 2x2 ibz matrices.
 //!
-//! Mirrors `vendor/the-sqisign/src/quaternion/ref/generic/dim2.c`.
+//! Mirrors `the-sqisign/src/quaternion/ref/generic/dim2.c`.
 
 use crate::ibz::{ibz_add, ibz_invmod, ibz_mod, ibz_mul, ibz_neg, ibz_set, ibz_sub, Ibz};
 

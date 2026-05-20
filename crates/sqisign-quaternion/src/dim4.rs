@@ -1,6 +1,6 @@
 //! Dimension-4 ibz vectors and 4x4 ibz matrices.
 //!
-//! Mirrors `vendor/the-sqisign/src/quaternion/ref/generic/dim4.c`. All
+//! Mirrors `the-sqisign/src/quaternion/ref/generic/dim4.c`. All
 //! operations are deterministic, pure-`Ibz`, and free of randomness.
 //!
 //! The C reference uses fixed-size C arrays `ibz_vec_4_t` and

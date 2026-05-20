@@ -10,7 +10,7 @@
 //! its full 64-bit truncated (unmasked) limb 4.
 //!
 //! `fp_div3` is the one-liner `modmul(THREE_INV, *a, *out)` (see
-//! `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:658..662`), so the
+//! `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:658..662`), so the
 //! record shape is one input (`a`) and one output (`c`), the unary
 //! cadence shared with `fp_neg`, `fp_sqr`, and `fp_half`.
 

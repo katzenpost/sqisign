@@ -1,6 +1,6 @@
 //! `lat_ball.c`: bounding parallelogram and lattice ball sampling.
 //!
-//! Mirrors `vendor/the-sqisign/src/quaternion/ref/generic/lat_ball.c`.
+//! Mirrors `the-sqisign/src/quaternion/ref/generic/lat_ball.c`.
 //! Both the deterministic [`quat_lattice_bound_parallelogram`] and the
 //! RNG-driven [`quat_lattice_sample_from_ball`] are in scope. The
 //! sampler takes `&mut impl RngSource` as its first formal parameter,

@@ -1,4 +1,4 @@
-//! Direct port of `vendor/the-sqisign/src/id2iso/ref/lvlx/dim2id2iso.c`.
+//! Direct port of `the-sqisign/src/id2iso/ref/lvlx/dim2id2iso.c`.
 //!
 //! Three families of entry points:
 //!
@@ -579,7 +579,7 @@ pub fn fixed_degree_isogeny_and_eval<R: RngSource>(
 
 /// Internal worker for [`fixed_degree_isogeny_and_eval`]. Mirrors the
 /// static `_fixed_degree_isogeny_impl` in
-/// `vendor/the-sqisign/src/id2iso/ref/lvlx/dim2id2iso.c`.
+/// `the-sqisign/src/id2iso/ref/lvlx/dim2id2iso.c`.
 #[allow(clippy::too_many_arguments)]
 fn fixed_degree_isogeny_impl<R: RngSource>(
     rng: &mut R,

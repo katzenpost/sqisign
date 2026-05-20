@@ -10,7 +10,7 @@
 //! full 64-bit truncated (unmasked) limb 4.
 //!
 //! `fp_half` is the one-liner `modmul(TWO_INV, *a, *out)` (see
-//! `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:646..650`), so the
+//! `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:646..650`), so the
 //! record shape is one input (`a`) and one output (`c`), the unary
 //! cadence shared with `fp_neg` and `fp_sqr`.
 

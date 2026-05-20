@@ -4,7 +4,7 @@
 //! reference's `digit_t = uint64_t` memory layout, `NWORDS_FIELD == 5`).
 //!
 //! `fp_inv` is the *in-place* one-liner `modinv(*x, NULL, *x)` (see
-//! `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:628..632`). The
+//! `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:628..632`). The
 //! reference passes the same buffer as both input `x` and destination
 //! `z`; the cdump harness snapshots the input into a separate `a` and
 //! the in-place result into `c`, so the recorded record carries both

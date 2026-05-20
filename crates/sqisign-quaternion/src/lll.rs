@@ -1,6 +1,6 @@
 //! L2 (Nguyen-Stehlé) LLL reduction.
 //!
-//! Mirrors `vendor/the-sqisign/src/quaternion/ref/generic/lll/l2.c`. Reduces
+//! Mirrors `the-sqisign/src/quaternion/ref/generic/lll/l2.c`. Reduces
 //! a 4x4 lattice basis in place, updating the Gram matrix to reflect the
 //! new basis. The implementation is dimension-4 specific because the
 //! upstream code is, and the quaternion module relies on that.

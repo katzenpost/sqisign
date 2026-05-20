@@ -12,10 +12,13 @@ signing. This crate is a from-scratch transcription of the
 into safe Rust, intended as an audit-friendly alternative for projects
 that want to ship SQIsign without taking on a C dependency.
 
-The full C reference is vendored as a git submodule at
-`vendor/the-sqisign`; every boundary in the port is witnessed against
-the same upstream commit (see `UPSTREAM.md`) by differential test
-vectors plus the NIST KAT round-trip.
+The full C reference is **not** carried in this repository. It is
+pinned by commit hash in `UPSTREAM.md`; reviewers who want to read the
+source or regenerate vectors clone it separately at that commit. Every
+boundary in the port is witnessed against that same upstream commit by
+differential test vectors plus the NIST KAT round-trip; the lvl1 KAT
+response file is carried at `kat/PQCsignKAT_353_SQIsign_lvl1.rsp` so
+the round-trip test does not require an upstream checkout.
 
 ## Status
 
@@ -84,9 +87,9 @@ cargo test  --workspace
 ```
 
 The C reference is only needed if you want to regenerate test vectors
-(see "Verifying correctness" below). It is provided as a git submodule;
-clone with `--recurse-submodules` or run
-`git submodule update --init --recursive` after cloning.
+(see "Verifying correctness" below). Clone it separately at the pin
+recorded in `UPSTREAM.md` and point `UPSTREAM_REF` at the result; the
+tooling does the rest.
 
 ## Using the library
 
@@ -176,15 +179,16 @@ crates/
   sqisign/             top-level meta-crate
   sqisign-vectors/     differential-vector loader (used only by tests)
 
-vendor/
-  the-sqisign/         pinned C reference; the canonical oracle
-
 tools/
-  cdump/               C program that dumps deterministic test vectors
+  cdump/               C program that dumps deterministic test vectors;
+                       links against an external upstream checkout, path
+                       supplied via -DSQISIGN_UPSTREAM_REF or UPSTREAM_REF
   vector-gen/          Rust program that converts cdump output to JSON
   gen-vectors.sh       regenerate every vector from the C reference
 
 vectors/               committed reference vectors, organised by module
+kat/                   carried copy of the upstream lvl1 KAT response file
+                       (used directly by crates/sqisign-sign/tests/kat_sign.rs)
 ```
 
 The `sqisign-verify` crate is deliberately small: a Katzenpost mix node
@@ -209,14 +213,21 @@ function as the upstream C reference.
 ### The upstream pin
 
 The C reference at <https://github.com/SQISign/the-sqisign> is pinned
-to a single commit in `UPSTREAM.md`. Every test vector and the KAT
-witness records that same commit hash in its `upstream_commit` field;
-CI fails if `UPSTREAM.md`, the vendored submodule, and the vectors
-ever disagree on the hash. To inspect the pin:
+to a single commit in `UPSTREAM.md`. Every test vector records that
+same commit hash in its `upstream_commit` field; CI clones upstream at
+the recorded hash and regenerates the vectors to confirm they match
+byte-for-byte. To inspect the pin:
 
 ```sh
 cat UPSTREAM.md
-git -C vendor/the-sqisign rev-parse HEAD
+```
+
+To check it out locally for review:
+
+```sh
+git clone https://github.com/SQISign/the-sqisign /tmp/the-sqisign
+git -C /tmp/the-sqisign checkout \
+  $(grep -oE '`[0-9a-f]{40}`' UPSTREAM.md | head -1 | tr -d '`')
 ```
 
 ### Differential test vectors
@@ -242,8 +253,10 @@ C reference. The convention is:
 To reproduce the vectors from a clean checkout:
 
 ```sh
-git submodule update --init --recursive
-./tools/gen-vectors.sh
+git clone https://github.com/SQISign/the-sqisign /tmp/the-sqisign
+git -C /tmp/the-sqisign checkout \
+  $(grep -oE '`[0-9a-f]{40}`' UPSTREAM.md | head -1 | tr -d '`')
+UPSTREAM_REF=/tmp/the-sqisign ./tools/gen-vectors.sh
 git status vectors/                  # should be clean
 ```
 
@@ -263,7 +276,8 @@ cargo test --workspace                  # exercises every committed vector
 ### KAT round-trip
 
 The strongest end-to-end witness is the NIST KAT response file at
-`vendor/the-sqisign/KAT/PQCsignKAT_353_SQIsign_lvl1.rsp`. It records,
+`kat/PQCsignKAT_353_SQIsign_lvl1.rsp` (a byte copy of the upstream's
+`KAT/PQCsignKAT_353_SQIsign_lvl1.rsp` at the pinned commit). It records,
 for each of 100 fixed-seed tests, the input entropy and the resulting
 public key, secret key, and signed message that the upstream
 implementation produces.
@@ -291,8 +305,8 @@ is detected at the byte level.
 
 1. **Pin parity.** `cat UPSTREAM.md` and verify the date and commit are
    the ones quoted in any paper, advisory, or release note you trust.
-   Then `git -C vendor/the-sqisign rev-parse HEAD` and confirm it
-   matches.
+   Then, in a separate clone of <https://github.com/SQISign/the-sqisign>,
+   `git rev-parse HEAD` and confirm it matches.
 2. **Vector reproducibility.** Run `./tools/gen-vectors.sh` from a
    clean checkout; `git status vectors/` must be clean afterwards. A
    diff there means the C harness, the vendored upstream, or the
@@ -306,22 +320,25 @@ is detected at the byte level.
 5. **Spot audit.** Pick one or two boundaries (the LLL reducer in
    `crates/sqisign-quaternion/src/lll.rs` and the rejection sampler
    in `crates/sqisign-quaternion/src/lat_ball.rs` are good choices)
-   and read the Rust source side-by-side with
-   `vendor/the-sqisign/src/quaternion/ref/generic/lll/l2.c` and
-   `vendor/the-sqisign/src/quaternion/ref/generic/lat_ball.c`. The
-   port mirrors the C reference's control flow line-for-line where
-   feasible, which is what makes that kind of diff readable.
+   and read the Rust source side-by-side with, in your separate
+   upstream clone,
+   `src/quaternion/ref/generic/lll/l2.c` and
+   `src/quaternion/ref/generic/lat_ball.c`. The port mirrors the C
+   reference's control flow line-for-line where feasible, which is
+   what makes that kind of diff readable.
 
 None of these by themselves rules out a subtle bug; together they
 narrow the search.
 
 ## Provenance
 
-Some directories under `vendor/the-sqisign` are governed by the
-upstream's own license (Apache 2.0, with portions under MIT or BSD
-from the underlying NIST submission packaging). This crate as a whole
-is licensed under the GNU General Public License v3 or later; see
-`LICENSE` for the full text.
+The C reference at <https://github.com/SQISign/the-sqisign> is governed
+by Apache 2.0 (with portions under MIT or BSD from the underlying NIST
+submission packaging). The KAT response file we carry at
+`kat/PQCsignKAT_353_SQIsign_lvl1.rsp` is a byte copy of the upstream's
+own file at the pinned commit and inherits that license. This crate as
+a whole is licensed under the GNU General Public License v3 or later;
+see `LICENSE` for the full text.
 
 ## Acknowledgements
 

@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "SQIsign common: hashing (SHA-3/SHAKE), seed expansion, PRNG, memory utilities. Mirrors vendor/the-sqisign/src/common."
+description = "SQIsign common: hashing (SHA-3/SHAKE), seed expansion, PRNG, memory utilities. Mirrors the-sqisign/src/common."
 
 [dependencies]
 # The reference's common/fips202.c is a standard FIPS-202 Keccak. We do not

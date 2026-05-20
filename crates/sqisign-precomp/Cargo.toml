@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "SQIsign precomputed constants, copied verbatim from the reference with a re-derivation verification test. Mirrors vendor/the-sqisign/src/precomp."
+description = "SQIsign precomputed constants, copied verbatim from the reference with a re-derivation verification test. Mirrors the-sqisign/src/precomp."
 
 [dependencies]
 sqisign-common.workspace = true

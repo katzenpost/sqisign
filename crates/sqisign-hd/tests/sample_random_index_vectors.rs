@@ -5,7 +5,7 @@
 //! 48-byte entropy block (no personalisation) and draws
 //! `INDICES_PER_RECORD` consecutive indices. The bytes produced must
 //! match the C reference's `sample_random_index` (file-local in
-//! `vendor/the-sqisign/src/hd/ref/lvlx/theta_isogenies.c`) byte-for-byte.
+//! `the-sqisign/src/hd/ref/lvlx/theta_isogenies.c`) byte-for-byte.
 
 use sqisign_common::CtrDrbg;
 use sqisign_hd::sample_random_index;

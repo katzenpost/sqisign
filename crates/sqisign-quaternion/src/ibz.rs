@@ -1,6 +1,6 @@
 //! Big integer wrappers (`ibz_t`).
 //!
-//! Mirrors `vendor/the-sqisign/src/quaternion/ref/generic/intbig.c`. The
+//! Mirrors `the-sqisign/src/quaternion/ref/generic/intbig.c`. The
 //! C reference uses GMP's `mpz_t`; this port uses [`num_bigint::BigInt`].
 //! See the crate root for the canonical-bytes boundary contract and the
 //! cryptographic non-secrecy of these paths.

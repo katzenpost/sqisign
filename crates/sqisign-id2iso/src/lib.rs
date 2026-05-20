@@ -1,6 +1,6 @@
 //! SQIsign `id2iso`: ideal-to-isogeny translation.
 //!
-//! Mirrors `vendor/the-sqisign/src/id2iso`. Ported in **Phase 3, unit 11**.
+//! Mirrors `the-sqisign/src/id2iso`. Ported in **Phase 3, unit 11**.
 //!
 //! # Scope
 //!

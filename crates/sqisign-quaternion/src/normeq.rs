@@ -1,6 +1,6 @@
 //! Norm-equation helpers.
 //!
-//! Mirrors `vendor/the-sqisign/src/quaternion/ref/generic/normeq.c`. The
+//! Mirrors `the-sqisign/src/quaternion/ref/generic/normeq.c`. The
 //! deterministic helpers (`quat_lattice_O0_set`, `quat_lattice_O0_set_extremal`,
 //! `quat_order_elem_create`, `quat_change_to_O0_basis`) are joined here by the
 //! two RNG-driven entry points the signing path needs: [`quat_represent_integer`]

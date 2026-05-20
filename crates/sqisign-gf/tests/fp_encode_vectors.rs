@@ -5,7 +5,7 @@
 //!
 //! `fp_encode` is the canonical serialization the reference defines as
 //! `redc` followed by a 32-iteration `c[0] & 0xff; modshr(8, c)` loop
-//! (see `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:664..675`).
+//! (see `the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:664..675`).
 //! Two non-canonical encodings of the same field element yield the same
 //! 32 bytes; the edge battery in
 //! `tools/cdump/src/dump_main.c::emit_fp_encode_edges` includes the
