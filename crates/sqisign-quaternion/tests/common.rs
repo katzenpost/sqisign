@@ -56,3 +56,9 @@ pub fn read_i32(name: &str, inputs: &BTreeMap<String, String>) -> i32 {
     assert!(b.len() == 4, "expected 4-byte i32 for {name}");
     i32::from_le_bytes([b[0], b[1], b[2], b[3]])
 }
+
+/// Re-export `ibz_mat_4x4_new` under a local name so tests can build
+/// scratch matrices without re-importing it everywhere.
+pub fn ibz_mat_4x4_new_local() -> IbzMat4x4 {
+    ibz_mat_4x4_new()
+}

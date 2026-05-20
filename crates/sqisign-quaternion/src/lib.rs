@@ -74,12 +74,18 @@
 pub mod algebra;
 pub mod dim2;
 pub mod dim4;
+pub mod dpe;
 pub mod hnf;
 pub mod ibz;
 pub mod ideal;
 pub mod integers;
+pub mod lat_ball;
 pub mod lattice;
+pub mod lll;
+pub mod lll_applications;
+pub mod lll_verification;
 pub mod normeq;
+pub mod rationals;
 
 pub use algebra::{
     quat_alg_add, quat_alg_conj, quat_alg_coord_mul, quat_alg_elem_copy, quat_alg_elem_copy_ibz,
@@ -102,6 +108,11 @@ pub use dim4::{
     ibz_vec_4_new, ibz_vec_4_scalar_div, ibz_vec_4_scalar_mul, ibz_vec_4_set, ibz_vec_4_sub,
     quat_qf_eval, IbzMat4x4, IbzVec4,
 };
+pub use dpe::{
+    dpe_abs, dpe_add, dpe_cmp, dpe_cmp_d, dpe_div, dpe_get_d, dpe_get_z, dpe_mul, dpe_neg,
+    dpe_round, dpe_set, dpe_set_d, dpe_set_si, dpe_set_ui, dpe_set_z, dpe_sqrt, dpe_sub,
+    dpe_zero_p, Dpe,
+};
 pub use hnf::{
     ibz_centered_mod, ibz_conditional_assign, ibz_mat_4x4_is_hnf, ibz_mat_4xn_hnf_mod_core,
     ibz_mod_not_zero, ibz_vec_4_copy_mod, ibz_vec_4_linear_combination_mod,
@@ -123,6 +134,7 @@ pub use ideal::{
     quat_order_is_maximal, QuatLeftIdeal,
 };
 pub use integers::ibz_cornacchia_prime;
+pub use lat_ball::quat_lattice_bound_parallelogram;
 pub use lattice::{
     quat_lattice_add, quat_lattice_alg_elem_mul, quat_lattice_conjugate_without_hnf,
     quat_lattice_contains, quat_lattice_dual_without_hnf, quat_lattice_equal, quat_lattice_gram,
@@ -130,7 +142,21 @@ pub use lattice::{
     quat_lattice_mat_alg_coord_mul_without_hnf, quat_lattice_mul, quat_lattice_reduce_denom,
     QuatLattice,
 };
+pub use lll::{
+    quat_lattice_lll, quat_lll_core, DELTABAR, DELTA_DENOM, DELTA_NUM, EPSILON_DENOM, EPSILON_NUM,
+    ETABAR,
+};
+pub use lll_applications::{quat_lideal_lideal_mul_reduced, quat_lideal_reduce_basis};
+pub use lll_verification::{
+    ibq_vec_4_copy_ibz, quat_lll_bilinear, quat_lll_gram_schmidt_transposed_with_ibq,
+    quat_lll_set_ibq_parameters, quat_lll_verify,
+};
 pub use normeq::{
     quat_change_to_O0_basis, quat_lattice_O0_set, quat_lattice_O0_set_extremal,
     quat_order_elem_create, QuatPExtremalMaximalOrder,
+};
+pub use rationals::{
+    ibq_abs, ibq_add, ibq_cmp, ibq_copy, ibq_inv, ibq_is_ibz, ibq_is_one, ibq_is_zero,
+    ibq_mat_4x4_new, ibq_mul, ibq_neg, ibq_reduce, ibq_set, ibq_sub, ibq_to_ibz, ibq_vec_4_new,
+    Ibq, IbqMat4x4, IbqVec4,
 };
