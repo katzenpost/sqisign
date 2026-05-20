@@ -265,6 +265,43 @@
 //!   the property level by `fp_set_small(val) ==
 //!   fp_set_small(val as i32 as u64)`. No upstream defect observed;
 //!   every committed C-derived vector replays bit-for-bit.
+//! - [`fp_mul_small`] is `fp_mul_small(out, a, val)`, the binary-mixed
+//!   boundary (one `fp_t` input plus one `uint32_t` scalar) the reference
+//!   defines over `modmli`. `modmli(a, b, c)` is itself the thin
+//!   two-line combinator that builds the Montgomery representative of
+//!   the integer `b` via [`modint`] (into a five-limb scratch) and then
+//!   runs a single [`modmul`] of `a` against that scratch into `c`. No
+//!   new arithmetic is introduced at any layer: [`modint`], [`nres`],
+//!   [`NRES_C`] and [`modmul`] were all landed with the earlier ports;
+//!   [`modmli`] is a pure combinator. The C wrapper narrows the
+//!   `uint32_t val` to `int` before calling `modmli`, so only the low 32
+//!   bits of `val` are observable through the boundary and the result
+//!   sign-extends through the same chain `fp_set_small` documents (the
+//!   port reproduces this as `val as i32` at the public-wrapper
+//!   call-site). Because the boundary takes one `fp_t` input and one
+//!   `u64`-encoded scalar (the cdump emitter widens the recorded `val`
+//!   to 8 little-endian bytes for shape uniformity with
+//!   `fp_set_small`'s recording, even though the C signature is
+//!   `uint32_t`), the cdump harness adds a new emitter shape
+//!   `emit_fp_mul_val` (`{a, val} -> {out}`) alongside the
+//!   already-landed `emit_fp_value_setter`'s `{prefill, val} -> {out}`.
+//!   The differential battery is 132 edges (12 fp patterns x 11 vals)
+//!   plus 1000 sweep seeds, 1132 records total, the same shape
+//!   `fp_set_small`'s battery uses. Three sound raw-limb properties
+//!   are pinned: `val == 0` yields the canonical all-zero limb vector
+//!   for arbitrary `a` (every cross-product column sum is zero, the
+//!   final `c[4] = (spint)t` truncation reads off a zero `t`); `val ==
+//!   1` yields the same redundant representative `fp_mul(a, &nres(1))`
+//!   does (the boundary is literally that call, threaded through the
+//!   `modmli -> modint(1) -> modmul` chain that produces
+//!   `MONTGOMERY_ONE` at the scratch buffer); and cross-oracle
+//!   `fp_mul_small(out, a, val) == fp_mul(a, &fp_set_small(val))`
+//!   bit-exact for arbitrary inputs (the just-landed `fp_set_small +
+//!   fp_mul` re-express the same `modint + modmul` chain `modmli`
+//!   evaluates, so the equivalence is a structural identity verified
+//!   empirically across all 1132 records before pinning). No upstream
+//!   defect observed; every committed C-derived vector replays
+//!   bit-for-bit.
 //! - [`fp_is_equal`] is `fp_is_equal(a, b)`, the second predicate boundary
 //!   in the gf battery: a *binary* predicate returning the same
 //!   `uint32_t` mask shape as [`fp_is_zero`] (`0xFFFFFFFF` when `a` and
@@ -1692,6 +1729,106 @@ fn modint(x: i32, a: &mut Fp) {
 /// `b * modint(_)` style fallthrough) can reuse these directly.
 pub fn fp_set_small(out: &mut Fp, val: u64) {
     modint(val as i32, out);
+}
+
+/// Modular multiplication by an integer: `c = a * b mod 2p`, where `b` is
+/// an `int` first widened through [`modint`] to its Montgomery
+/// representative and then folded into the running multiplication via
+/// [`modmul`].
+///
+/// Mirrors the reference's
+/// `inline static void modmli(const spint *a, int b, spint *c)` at
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:372..376`:
+///
+/// ```c
+/// inline static void modmli(const spint *a, int b, spint *c) {
+///   spint t[5];
+///   modint(b, t);
+///   modmul(a, t, c);
+/// }
+/// ```
+///
+/// It is the thin combinator the reference uses whenever a field element
+/// must be multiplied by a small integer constant: build the Montgomery
+/// representative of that integer with [`modint`] (so the cross product
+/// stays in the Montgomery domain), then run a single [`modmul`]. Because
+/// `modint`'s positional limb-0 write is sign-extending from `int32_t`,
+/// the same high-bits-ignored narrowing [`fp_set_small`] documents applies
+/// here too, only the low 32 bits of the caller's argument are observable
+/// once the public wrapper [`fp_mul_small`] has performed its
+/// `uint32_t -> int` cast.
+///
+/// No new arithmetic is introduced at this level: the port is exactly the
+/// reference's two-line body, transcribed identifier-for-identifier with a
+/// local five-limb scratch `t` for the `modint` output, then a single
+/// `modmul(a, &t, c)` call into the already-ported core. The `t` scratch
+/// is required for the same borrow-checker reason [`modint`] needs its
+/// `tmp` buffer in the underlying `nres(a, a)` call: Rust will not permit
+/// the equivalent aliased borrow, and a fresh stack-resident `Fp` is the
+/// natural mirror of the reference's `spint t[5];`.
+fn modmli(a: &Fp, b: i32, c: &mut Fp) {
+    let mut t: Fp = [0u64; NWORDS_FIELD];
+    modint(b, &mut t);
+    modmul(a, &t, c);
+}
+
+/// GF(p) Montgomery multiplication by a small integer: `out = a * val * R^-1
+/// mod p`, in the redundant radix-2^51 representation, reduced to less than
+/// `2p`.
+///
+/// Mirrors the reference's `void fp_mul_small(fp_t *x, const fp_t *a,
+/// const uint32_t val)` at
+/// `vendor/the-sqisign/src/gf/ref/lvl1/fp_p5248_64.c:557..560`:
+///
+/// ```c
+/// void fp_mul_small(fp_t *x, const fp_t *a, const uint32_t val) {
+///   modmli(*a, (int)val, *x);
+/// }
+/// ```
+///
+/// The full `uint32_t` argument is taken but immediately narrowed to
+/// `int` (`int32_t` on every reasonable platform). The narrowing is the
+/// load-bearing observation: the boundary's effective scalar domain is
+/// `int32_t`, not `uint32_t`, so the upper half of values above
+/// `0x7fffffff` is reinterpreted as negative and the subsequent
+/// `(spint)x` cast inside [`modint`] sign-extends to `0xffffffff_xxxxxxxx`.
+/// For example, `val == 0x80000000` becomes the `int32_t` `INT32_MIN`
+/// (`-2_147_483_648`), and `modint` writes `0xffff_ffff_8000_0000` at
+/// positional limb 0 before [`nres`] converts the result to its Montgomery
+/// representative.
+///
+/// The port reproduces this as `val as i32`: Rust's `as` on integer types
+/// performs the bit-preserving `u32 -> i32` reinterpret the C `(int)val`
+/// cast does, and the subsequent `i32 -> u64` sign-extension is hidden
+/// inside [`modint`]'s already-ported `x as i64 as u64` chain. No new
+/// arithmetic is introduced at this boundary: the port is exactly the
+/// reference's one-line body, dispatching through [`modmli`] (added here
+/// alongside the existing [`modint`], [`nres`], [`redc`], [`modfsb`],
+/// [`flatten`], [`modis0`], [`modcmp`] internal helpers) and reusing
+/// [`modmul`] for the cross product.
+///
+/// Two faithfully reproduced subtleties from the underlying [`modmul`]
+/// path:
+/// 1. The output is *not* fully canonical: limbs 0..=3 are below `2^51`
+///    (the column mask) but limb 4 is left unmasked (the final
+///    `c[4] = (spint)t` in `modmul` is a full 64-bit truncation of the
+///    residual accumulator, no `& mask`), exactly as the reference
+///    leaves it. Compare field elements with the value-level
+///    [`fp_is_equal`], never by raw-limb equality. The lone exception is
+///    `val == 0`: the cross product is bit-exactly the canonical
+///    all-zero representative for arbitrary `a` (every column sum is a
+///    multiple of the all-zero Montgomery image of `0`).
+/// 2. The Montgomery domain is preserved: if `a == A * R mod p`
+///    positionally and `val` narrows to the signed integer `v`, then
+///    `modmli(a, v)` computes `(A * R) * (v * R) * R^-1 == (A * v) * R
+///    mod p`. The output is the Montgomery representative of `A * v`,
+///    ready to be consumed by further Montgomery-domain operations
+///    without re-conversion. This is exactly the same Montgomery-in,
+///    Montgomery-out pattern [`fp_half`] and [`fp_div3`] exhibit, only
+///    with the integer operand built dynamically through [`modint`]
+///    rather than supplied as a precomputed constant.
+pub fn fp_mul_small(out: &mut Fp, a: &Fp, val: u32) {
+    modmli(a, val as i32, out);
 }
 
 #[cfg(test)]

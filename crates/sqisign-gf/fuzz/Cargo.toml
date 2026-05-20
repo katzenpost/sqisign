@@ -93,6 +93,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "fp_mul_small"
+path = "fuzz_targets/fp_mul_small.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "fp_select"
 path = "fuzz_targets/fp_select.rs"
 test = false

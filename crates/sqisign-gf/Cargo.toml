@@ -63,6 +63,10 @@ name = "fp_set_small"
 harness = false
 
 [[bench]]
+name = "fp_mul_small"
+harness = false
+
+[[bench]]
 name = "fp_select"
 harness = false
 
