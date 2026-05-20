@@ -611,7 +611,7 @@ fn _unused() {
         NWORDS_ORDER,
         copy_bases_to_kernel,
         double_couple_point_iter,
-        theta_chain_compute_and_eval_randomized,
+        theta_chain_compute_and_eval_randomized::<sqisign_common::CtrDrbg>,
         ThetaCoupleCurve::zero,
         ThetaCouplePoint::zero,
         ThetaKernelCouplePoints::zero,

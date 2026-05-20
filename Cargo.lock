@@ -932,6 +932,7 @@ name = "sqisign-hd"
 version = "0.0.0"
 dependencies = [
  "hex",
+ "sqisign-common",
  "sqisign-ec",
  "sqisign-gf",
  "sqisign-vectors",

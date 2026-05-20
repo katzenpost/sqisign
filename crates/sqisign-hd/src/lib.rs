@@ -23,20 +23,20 @@
 //! are deeply intertwined with `_theta_chain_compute_impl`; their
 //! correctness is witnessed by the chain vectors.
 //!
-//! ## Deferred boundaries
+//! ## RNG-driven boundary
 //!
-//! - `theta_chain_compute_and_eval_randomized` is **not ported in this
-//!   unit**. The reference calls `randombytes` via `sample_random_index`
-//!   to choose one of six normalisation matrices for the splitting step.
-//!   That makes the boundary caller-visible non-deterministic, so a
-//!   differential vector battery is impossible without a caller-supplied
-//!   RNG handle. The current `sqisign-common` crate exposes the CTR-DRBG
-//!   only via [`sqisign_common::CtrDrbg::fill`] (no top-level
-//!   `randombytes`), so wiring this faithfully requires a follow-up that
-//!   thread-locals or argument-passes the DRBG. The deterministic
-//!   variants ([`theta_chain_compute_and_eval`] and
-//!   [`theta_chain_compute_and_eval_verify`]) cover all paths the
-//!   reference reaches with `randomize=false`.
+//! [`theta_chain_compute_and_eval_randomized`] takes
+//! `&mut R: sqisign_common::RngSource` as its first formal parameter,
+//! replacing the C reference's thread-local DRBG global. The only
+//! RNG-derived bytes consumed are those drawn by the small rejection
+//! sampler [`sample_random_index`] (four bytes per draw, exceedingly
+//! rarely more), which chooses one of six normalisation matrices for the
+//! final splitting step. A differential battery on
+//! `sample_random_index` (see `vectors/hd/sample_random_index.json`)
+//! witnesses byte-for-byte parity with the reference; the rest of the
+//! chain is deterministic and is shared verbatim with
+//! [`theta_chain_compute_and_eval`] and
+//! [`theta_chain_compute_and_eval_verify`].
 //!
 //! ## Ambiguous decisions
 //!
@@ -59,6 +59,7 @@
 // index loops.
 #![allow(clippy::needless_range_loop)]
 
+use sqisign_common::RngSource;
 use sqisign_ec::{
     add, copy_curve, copy_point, dbl, dblw, ec_curve_init, ec_dbl, ec_dbl_iter, ec_is_equal,
     ec_is_zero, jac_from_ws, jac_to_ws, jac_to_xz, jac_to_xz_add_components, lift_basis,
@@ -1769,11 +1770,33 @@ fn theta_isogeny_eval(out: &mut ThetaPoint, phi: &ThetaIsogeny, p: &ThetaPoint) 
     }
 }
 
+/// Sample a uniform index in `[0, 5]` from the RNG via four-byte
+/// rejection sampling. Mirrors the static `sample_random_index` helper in
+/// `vendor/the-sqisign/src/hd/ref/lvlx/theta_isogenies.c`: a 32-bit seed
+/// is drawn in little-endian order, the top four values (those with
+/// `seed >= 2^32 - 4`) are rejected to remove the modulo-by-six bias, and
+/// the accepted seed is reduced via the Granlund-Möller constant
+/// `2_863_311_531 = ceil(2^34 / 6)` so the division is constant-time.
+pub fn sample_random_index<R: RngSource + ?Sized>(rng: &mut R) -> u8 {
+    let mut seed_arr = [0u8; 4];
+    let seed: u32 = loop {
+        rng.fill(&mut seed_arr);
+        let s = u32::from_le_bytes(seed_arr);
+        if s < 4_294_967_292u32 {
+            break s;
+        }
+    };
+    let q = ((seed as u64).wrapping_mul(2_863_311_531u64) >> 34) as u32;
+    let secret_index = seed - q * 6;
+    debug_assert_eq!(secret_index, seed % 6);
+    secret_index as u8
+}
+
 fn splitting_compute(
     out: &mut ThetaSplitting,
     a: &ThetaStructure,
     zero_index: i32,
-    randomize: bool,
+    rng: Option<&mut dyn RngSource>,
 ) -> bool {
     let mut count: u32 = 0;
     let mut u_cst = fp2_zero();
@@ -1817,21 +1840,33 @@ fn splitting_compute(
         }
     }
 
-    if randomize {
-        // Deferred in this unit: see crate-level docs for the
-        // `theta_chain_compute_and_eval_randomized` note. The two
-        // referenced helpers (`set_base_change_matrix_from_precomp`,
-        // `base_change_matrix_multiplication`) are kept so the
-        // non-random path can call them locally if needed and so the
-        // randomised pathway is a small extension.
-        let _ = NORMALIZATION_TRANSFORMS;
-        let _ = (
-            set_base_change_matrix_from_precomp as fn(_, _),
-            base_change_matrix_multiplication as fn(_, _, _),
-        );
-        unimplemented!(
-            "theta_chain_compute_and_eval_randomized: requires caller-supplied RNG (deferred)"
-        );
+    // Pick a random normalisation matrix. Mirrors the C reference's
+    // `if (randomize) { ... }` block guarded by `ENABLE_SIGN`: a secret
+    // index in `[0, 5]` is drawn, a constant-time selection over the six
+    // precomputed matrices yields `Mrandom`, and the splitting matrix is
+    // left-multiplied by it.
+    if let Some(rng) = rng {
+        let secret_index = sample_random_index(rng);
+        let mut m_random = BasisChangeMatrix::zero();
+        set_base_change_matrix_from_precomp(&mut m_random, &NORMALIZATION_TRANSFORMS[0]);
+        for i in 1u8..6 {
+            // `i - secret_index` is signed; the C reference relies on
+            // the `(mask | -mask) >> 31` trick to produce 0 iff equal,
+            // and -1 otherwise. The matrix-select's fourth argument is
+            // the *negation* of that, so when `i == secret_index` we
+            // copy the candidate, and otherwise keep the running pick.
+            let diff = (i as i32) - (secret_index as i32);
+            let mask: i32 = (diff | diff.wrapping_neg()) >> 31;
+            let cur = m_random;
+            select_base_change_matrix(
+                &mut m_random,
+                &cur,
+                &NORMALIZATION_TRANSFORMS[i as usize],
+                !(mask as u32),
+            );
+        }
+        let cur = out.mat;
+        base_change_matrix_multiplication(&mut out.mat, &m_random, &cur);
     }
 
     apply_isomorphism(&mut out.b.null_point, &out.mat, &a.null_point);
@@ -1942,7 +1977,7 @@ fn theta_chain_compute_impl(
     e34: &mut ThetaCoupleCurve,
     p12: &mut [ThetaCouplePoint],
     verify: bool,
-    randomize: bool,
+    rng: Option<&mut dyn RngSource>,
 ) -> i32 {
     let num_p = p12.len();
     let mut theta = ThetaStructure::zero();
@@ -2167,7 +2202,7 @@ fn theta_chain_compute_impl(
         &mut last_step,
         &theta,
         if extra_torsion { 8 } else { -1 },
-        randomize,
+        rng,
     );
     if !is_split {
         return 0;
@@ -2200,7 +2235,7 @@ pub fn theta_chain_compute_and_eval(
     e34: &mut ThetaCoupleCurve,
     p12: &mut [ThetaCouplePoint],
 ) -> i32 {
-    theta_chain_compute_impl(n, e12, ker, extra_torsion, e34, p12, false, false)
+    theta_chain_compute_impl(n, e12, ker, extra_torsion, e34, p12, false, None)
 }
 
 /// Mirrors `theta_chain_compute_and_eval_verify`: like
@@ -2214,14 +2249,16 @@ pub fn theta_chain_compute_and_eval_verify(
     e34: &mut ThetaCoupleCurve,
     p12: &mut [ThetaCouplePoint],
 ) -> i32 {
-    theta_chain_compute_impl(n, e12, ker, extra_torsion, e34, p12, true, false)
+    theta_chain_compute_impl(n, e12, ker, extra_torsion, e34, p12, true, None)
 }
 
 /// Mirrors `theta_chain_compute_and_eval_randomized`: as
 /// [`theta_chain_compute_and_eval`] but draws a random normalisation
-/// matrix during the splitting step. **Deferred** in this unit; see
-/// the crate-level docs.
-pub fn theta_chain_compute_and_eval_randomized(
+/// matrix during the splitting step from the caller-supplied RNG.
+/// The byte stream consumed matches what the C reference would have
+/// drawn under an identically seeded DRBG.
+pub fn theta_chain_compute_and_eval_randomized<R: RngSource>(
+    rng: &mut R,
     n: u32,
     e12: &mut ThetaCoupleCurve,
     ker: &ThetaKernelCouplePoints,
@@ -2229,5 +2266,14 @@ pub fn theta_chain_compute_and_eval_randomized(
     e34: &mut ThetaCoupleCurve,
     p12: &mut [ThetaCouplePoint],
 ) -> i32 {
-    theta_chain_compute_impl(n, e12, ker, extra_torsion, e34, p12, false, true)
+    theta_chain_compute_impl(
+        n,
+        e12,
+        ker,
+        extra_torsion,
+        e34,
+        p12,
+        false,
+        Some(rng as &mut dyn RngSource),
+    )
 }
