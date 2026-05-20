@@ -19,7 +19,7 @@ members = [
 edition = "2021"
 rust-version = "1.94"
 license = "GPL-3.0-or-later"
-repository = "local"
+repository = "https://github.com/katzenpost/sqisign"
 # Pre-release. The semantics this version commits us to are:
 #   * KAT-equivalent to the upstream C reference at the commit pinned
 #     in UPSTREAM.md, at lvl1 only.

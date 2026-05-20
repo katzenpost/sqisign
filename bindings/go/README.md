@@ -23,7 +23,7 @@ the staticlib.
 ## API
 
 ```go
-import "github.com/katzenpost/sqisign-rs/bindings/go/sqisign"
+import "github.com/katzenpost/sqisign/bindings/go/sqisign"
 
 const (
     sqisign.PublicKeyBytes = 65

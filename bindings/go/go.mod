@@ -1,3 +1,3 @@
-module github.com/katzenpost/sqisign-rs/bindings/go
+module github.com/katzenpost/sqisign/bindings/go
 
 go 1.22

@@ -1,4 +1,4 @@
-# sqisign-rs
+# sqisign
 
 A pure-Rust port of [SQIsign](https://sqisign.org/) Round 2, level 1.
 
@@ -53,7 +53,7 @@ Measured on AMD EPYC Turin at 2.4 GHz, release build, single-threaded,
 no AVX assembly. The right column is the upstream C reference (`ref`
 build, mini-gmp, same host, also no AVX) for comparison.
 
-| Operation | sqisign-rs   | upstream C `ref` | ratio (rs / C) |
+| Operation | sqisign      | upstream C `ref` | ratio (rs / C) |
 |-----------|-------------:|-----------------:|---------------:|
 | verify    |    3.64 ms   |          3.20 ms |        1.14×   |
 | keygen    |   36.68 ms   |         28.40 ms |        1.29×   |
@@ -344,7 +344,7 @@ reference. Any bug it has is the port's own.
 
 > **⚠️ This library has not been audited.**
 >
-> sqisign-rs is a from-scratch transcription of a research-stage
+> sqisign is a from-scratch transcription of a research-stage
 > post-quantum signature scheme by a single author (with model
 > assistance). It is byte-compatible with the published C reference
 > on the lvl1 KAT, which is a strong correctness witness, but

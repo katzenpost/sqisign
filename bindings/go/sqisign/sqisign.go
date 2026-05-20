@@ -6,7 +6,7 @@
 //	cargo build --release -p sqisign-ffi
 //
 // at ../../../target/release/libsqisign_ffi.a, resolved relative to
-// this source file. Users who keep this binding inside the sqisign-rs
+// this source file. Users who keep this binding inside the sqisign
 // workspace get the link automatically; users who vendor the binding
 // elsewhere need to either copy the staticlib in or override CGO_LDFLAGS.
 //

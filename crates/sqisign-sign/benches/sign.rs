@@ -17,7 +17,7 @@ fn bench_sign(c: &mut Criterion) {
     let mut sk_template = SecretKey::new();
     assert_eq!(protocols_keygen(&mut drbg, &mut pk, &mut sk_template), 1);
 
-    let message = b"sqisign-rs bench: deterministic 32-byte payload  ";
+    let message = b"sqisign bench: deterministic 32-byte payload     ";
 
     let mut group = c.benchmark_group("sqisign_sign");
     group.sample_size(20);
