@@ -22,3 +22,11 @@ sqisign-vectors.workspace = true
 hex.workspace = true
 proptest.workspace = true
 criterion.workspace = true
+
+[[bench]]
+name = "keygen"
+harness = false
+
+[[bench]]
+name = "sign"
+harness = false
