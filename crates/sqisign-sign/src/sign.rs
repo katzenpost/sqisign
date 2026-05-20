@@ -11,7 +11,7 @@ use sqisign_common::RngSource;
 use sqisign_ec::{
     copy_basis, copy_curve, copy_point, ec_dbl_iter, ec_dbl_iter_basis, ec_eval_even,
     ec_eval_small_chain, ec_iso_eval, ec_isomorphism, ec_ladder3pt, ec_mul, ec_normalize_curve,
-    EcBasis, EcCurve, EcIsogEven, EcPoint, EcIsom, NWORDS_ORDER, TORSION_EVEN_POWER,
+    EcBasis, EcCurve, EcIsogEven, EcIsom, EcPoint, NWORDS_ORDER, TORSION_EVEN_POWER,
 };
 use sqisign_gf::fp2_copy;
 use sqisign_hd::{
@@ -29,15 +29,16 @@ use sqisign_precomp::{
 };
 use sqisign_quaternion::dim2::{ibz_vec_2_new, IbzVec2};
 use sqisign_quaternion::{
-    ibz_cmp, ibz_const_one, ibz_const_two, ibz_const_zero, ibz_copy_digits, ibz_div,
-    ibz_invmod, ibz_is_one, ibz_mul, ibz_pow, ibz_set, ibz_sub, ibz_to_digits, ibz_two_adic,
-    quat_alg_conj, quat_alg_make_primitive, quat_alg_norm, quat_lattice_conjugate_without_hnf,
-    quat_lattice_intersect, quat_lattice_sample_from_ball, quat_lideal_create,
-    quat_lideal_inter, quat_lideal_prime_norm_reduced_equivalent,
-    quat_sampling_random_ideal_O0_given_norm, Ibz, QuatAlgElem, QuatLattice, QuatLeftIdeal,
-    QuatRepresentIntegerParams,
+    ibz_cmp, ibz_const_one, ibz_const_two, ibz_const_zero, ibz_copy_digits, ibz_div, ibz_invmod,
+    ibz_is_one, ibz_mul, ibz_pow, ibz_set, ibz_sub, ibz_to_digits, ibz_two_adic, quat_alg_conj,
+    quat_alg_make_primitive, quat_alg_norm, quat_lattice_conjugate_without_hnf,
+    quat_lattice_intersect, quat_lattice_sample_from_ball, quat_lideal_create, quat_lideal_inter,
+    quat_lideal_prime_norm_reduced_equivalent, quat_sampling_random_ideal_O0_given_norm, Ibz,
+    QuatAlgElem, QuatLattice, QuatLeftIdeal, QuatRepresentIntegerParams,
 };
-use sqisign_verify::{hash_to_challenge, PublicKey, Signature, SECURITY_BITS, SQISIGN_RESPONSE_LENGTH};
+use sqisign_verify::{
+    hash_to_challenge, PublicKey, Signature, SECURITY_BITS, SQISIGN_RESPONSE_LENGTH,
+};
 
 use crate::keygen::SecretKey;
 
@@ -74,14 +75,8 @@ fn commit<R: RngSource>(
         order: &EXTREMAL_ORDERS[0],
         algebra: &QUATALG_PINFTY,
     };
-    let mut found = quat_sampling_random_ideal_O0_given_norm(
-        rng,
-        lideal_com,
-        &COM_DEGREE,
-        1,
-        &ri_params,
-        None,
-    );
+    let mut found =
+        quat_sampling_random_ideal_O0_given_norm(rng, lideal_com, &COM_DEGREE, 1, &ri_params, None);
     if found != 0 {
         found = quat_lideal_prime_norm_reduced_equivalent(
             rng,
@@ -172,7 +167,11 @@ fn compute_response_quat_element<R: RngSource>(
         &lat_commit,
     );
 
-    ibz_mul(lattice_content, &lideal_chall_secret.norm, &lideal_commit.norm);
+    ibz_mul(
+        lattice_content,
+        &lideal_chall_secret.norm,
+        &lideal_commit.norm,
+    );
     sample_response(rng, resp_quat, &lattice_hom_chall_to_com, lattice_content);
 }
 
@@ -222,7 +221,12 @@ fn compute_random_aux_norm_and_helpers(
     let mut norm_d = Ibz::zero();
     let mut tmp = Ibz::zero();
 
-    quat_alg_norm(&mut degree_full_resp, &mut norm_d, resp_quat, &QUATALG_PINFTY);
+    quat_alg_norm(
+        &mut degree_full_resp,
+        &mut norm_d,
+        resp_quat,
+        &QUATALG_PINFTY,
+    );
     debug_assert!(ibz_is_one(&norm_d) != 0);
     let cur = degree_full_resp.clone();
     ibz_div(&mut degree_full_resp, remain, &cur, lattice_content);
@@ -250,7 +254,10 @@ fn compute_random_aux_norm_and_helpers(
 
     let pow_dim2_deg_resp =
         (SQISIGN_RESPONSE_LENGTH as i32) - (exp_diadic as i32) - (sig.backtracking as i32);
-    debug_assert!(pow_dim2_deg_resp >= 0, "pow_dim2_deg_resp must be non-negative");
+    debug_assert!(
+        pow_dim2_deg_resp >= 0,
+        "pow_dim2_deg_resp must be non-negative"
+    );
     ibz_pow(remain, &ibz_const_two(), pow_dim2_deg_resp as u32);
     ibz_sub(random_aux_norm, remain, &degree_odd_resp);
 
@@ -329,18 +336,51 @@ fn compute_dim2_isogeny_challenge<R: RngSource>(
     ibz_to_digits(&mut scalar, degree_resp_inv);
 
     let cur = dim_two_ker.t1.p2.clone();
-    ec_mul(&mut dim_two_ker.t1.p2, &scalar, reduced_order, &cur, &mut ecom_x_eaux.e2);
+    ec_mul(
+        &mut dim_two_ker.t1.p2,
+        &scalar,
+        reduced_order,
+        &cur,
+        &mut ecom_x_eaux.e2,
+    );
     let cur = dim_two_ker.t2.p2.clone();
-    ec_mul(&mut dim_two_ker.t2.p2, &scalar, reduced_order, &cur, &mut ecom_x_eaux.e2);
+    ec_mul(
+        &mut dim_two_ker.t2.p2,
+        &scalar,
+        reduced_order,
+        &cur,
+        &mut ecom_x_eaux.e2,
+    );
     let cur = dim_two_ker.t1m2.p2.clone();
-    ec_mul(&mut dim_two_ker.t1m2.p2, &scalar, reduced_order, &cur, &mut ecom_x_eaux.e2);
+    ec_mul(
+        &mut dim_two_ker.t1m2.p2,
+        &scalar,
+        reduced_order,
+        &cur,
+        &mut ecom_x_eaux.e2,
+    );
 
     let cur = dim_two_ker.t1.clone();
-    double_couple_point_iter(&mut dim_two_ker.t1, exp_diadic_val_full_resp as u32, &cur, &ecom_x_eaux);
+    double_couple_point_iter(
+        &mut dim_two_ker.t1,
+        exp_diadic_val_full_resp as u32,
+        &cur,
+        &ecom_x_eaux,
+    );
     let cur = dim_two_ker.t2.clone();
-    double_couple_point_iter(&mut dim_two_ker.t2, exp_diadic_val_full_resp as u32, &cur, &ecom_x_eaux);
+    double_couple_point_iter(
+        &mut dim_two_ker.t2,
+        exp_diadic_val_full_resp as u32,
+        &cur,
+        &ecom_x_eaux,
+    );
     let cur = dim_two_ker.t1m2.clone();
-    double_couple_point_iter(&mut dim_two_ker.t1m2, exp_diadic_val_full_resp as u32, &cur, &ecom_x_eaux);
+    double_couple_point_iter(
+        &mut dim_two_ker.t1m2,
+        exp_diadic_val_full_resp as u32,
+        &cur,
+        &ecom_x_eaux,
+    );
 
     let mut pushed_points: [ThetaCouplePoint; 3] = [
         ThetaCouplePoint::zero(),
@@ -559,7 +599,12 @@ pub fn protocols_sign<R: RngSource>(
     let mut pow_dim2_deg_resp: u8;
 
     while !ret {
-        ret = commit(rng, &mut ecom_eaux.e1, &mut ecom_eaux.b1, &mut lideal_commit);
+        ret = commit(
+            rng,
+            &mut ecom_eaux.e1,
+            &mut ecom_eaux.b1,
+            &mut lideal_commit,
+        );
         if !ret {
             continue;
         }
@@ -675,5 +720,9 @@ pub fn protocols_sign<R: RngSource>(
     );
 
     let _ = SECURITY_BITS;
-    if ret { 1 } else { 0 }
+    if ret {
+        1
+    } else {
+        0
+    }
 }

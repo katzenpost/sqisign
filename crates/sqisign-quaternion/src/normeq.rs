@@ -196,7 +196,12 @@ pub fn quat_represent_integer<R: RngSource>(
 
     // First bound = sqrt(adjusted_n_gamma / p - q).
     let mut rmd = Ibz::zero();
-    ibz_div(&mut sq_bound, &mut rmd, &adjusted_n_gamma, &params.algebra.p);
+    ibz_div(
+        &mut sq_bound,
+        &mut rmd,
+        &adjusted_n_gamma,
+        &params.algebra.p,
+    );
     ibz_set(&mut temp, params.order.q as i32);
     let cur = sq_bound.clone();
     ibz_sub(&mut sq_bound, &cur, &temp);

@@ -228,9 +228,8 @@ pub fn dpe_set_z(x: &mut Dpe, y: &Ibz) {
     // full-precision double (which would overflow f64 for >1024-bit
     // magnitudes). The C reference uses `mpz_get_d_2exp(&e, y)` for the
     // same purpose; mini-gmp behaves identically.
-    let mant_unsigned = top_53_bits_as_normalized_f64(
-        mag.iter_u64_digits().collect::<Vec<u64>>().as_slice(),
-    );
+    let mant_unsigned =
+        top_53_bits_as_normalized_f64(mag.iter_u64_digits().collect::<Vec<u64>>().as_slice());
     let signed = if matches!(sign, Sign::Minus) {
         -mant_unsigned
     } else {

@@ -574,7 +574,16 @@ pub fn fixed_degree_isogeny_and_eval<R: RngSource>(
     num_p: usize,
     index_alternate_order: i32,
 ) -> i32 {
-    fixed_degree_isogeny_impl(rng, lideal, u, small, e34, p12, num_p, index_alternate_order)
+    fixed_degree_isogeny_impl(
+        rng,
+        lideal,
+        u,
+        small,
+        e34,
+        p12,
+        num_p,
+        index_alternate_order,
+    )
 }
 
 /// Internal worker for [`fixed_degree_isogeny_and_eval`]. Mirrors the
@@ -606,7 +615,10 @@ fn fixed_degree_isogeny_impl<R: RngSource>(
         (TORSION_EVEN_POWER as u32).saturating_sub(HD_EXTRA_TORSION)
     } else {
         let l = ibz_bitsize(&QUATALG_PINFTY.p) as i32 + QUAT_REPRES_BOUND_INPUT - u_bitsize;
-        debug_assert!(u_bitsize < l, "fixed_degree_isogeny_and_eval: bitsize bound");
+        debug_assert!(
+            u_bitsize < l,
+            "fixed_degree_isogeny_and_eval: bitsize bound"
+        );
         debug_assert!(
             (l as u32) < (TORSION_EVEN_POWER as u32).saturating_sub(HD_EXTRA_TORSION),
             "fixed_degree_isogeny_and_eval: length under torsion bound"
@@ -686,14 +698,8 @@ fn fixed_degree_isogeny_impl<R: RngSource>(
     let mut dim_two_ker = ThetaKernelCouplePoints::zero();
     copy_bases_to_kernel(&mut dim_two_ker, &b0_two, &b0_two_theta);
 
-    let ret_chain = theta_chain_compute_and_eval(
-        length,
-        &mut e00,
-        &dim_two_ker,
-        true,
-        e34,
-        &mut p12[..num_p],
-    );
+    let ret_chain =
+        theta_chain_compute_and_eval(length, &mut e00, &dim_two_ker, true, e34, &mut p12[..num_p]);
     if ret_chain == 0 {
         return 0;
     }
@@ -1039,5 +1045,3 @@ pub fn dim2id2iso_arbitrary_isogeny_evaluation<R: RngSource>(
         &QUATALG_PINFTY,
     )
 }
-
-

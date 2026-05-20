@@ -115,7 +115,9 @@ fn ibz_from_bytes(x: &mut Ibz, enc: &[u8], sgn: bool) {
         let s = DIGIT_BYTES - 1 - (digits * DIGIT_BYTES - nbytes);
         debug_assert!(s < DIGIT_BYTES);
         let shift = 8 * s;
-        let mask: u64 = (!0u64).wrapping_shr(shift as u32).wrapping_shl(shift as u32);
+        let mask: u64 = (!0u64)
+            .wrapping_shr(shift as u32)
+            .wrapping_shl(shift as u32);
         d[digits - 1] |= mask;
         for v in d.iter_mut() {
             *v = !*v;

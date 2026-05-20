@@ -21,7 +21,9 @@ use sqisign_common::CtrDrbg;
 use sqisign_sign::{
     protocols_keygen, protocols_sign, secret_key_to_bytes, SecretKey, SECRETKEY_BYTES,
 };
-use sqisign_verify::{public_key_to_bytes, signature_to_bytes, PublicKey, Signature, PUBLICKEY_BYTES, SIGNATURE_BYTES};
+use sqisign_verify::{
+    public_key_to_bytes, signature_to_bytes, PublicKey, Signature, PUBLICKEY_BYTES, SIGNATURE_BYTES,
+};
 
 fn kat_path() -> PathBuf {
     let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -191,6 +193,10 @@ fn kat_lvl1_full() {
         }
     }
     if !failures.is_empty() {
-        panic!("{} KAT mismatches:\n{}", failures.len(), failures.join("\n"));
+        panic!(
+            "{} KAT mismatches:\n{}",
+            failures.len(),
+            failures.join("\n")
+        );
     }
 }

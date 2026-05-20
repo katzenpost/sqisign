@@ -127,16 +127,16 @@ pub use ibz::{
     ibz_set, ibz_size_in_base, ibz_sqrt, ibz_sqrt_floor, ibz_sqrt_mod_p, ibz_sub, ibz_to_digits,
     ibz_two_adic, Ibz,
 };
+pub use ibz_rand::{
+    ibz_generate_random_prime, ibz_rand_interval, ibz_rand_interval_bits, ibz_rand_interval_i,
+    ibz_rand_interval_minm_m,
+};
 pub use ideal::{
     quat_lideal_add, quat_lideal_class_gram, quat_lideal_conjugate_without_hnf, quat_lideal_copy,
     quat_lideal_create, quat_lideal_create_principal, quat_lideal_equals, quat_lideal_generator,
     quat_lideal_inter, quat_lideal_inverse_lattice_without_hnf, quat_lideal_mul, quat_lideal_norm,
     quat_lideal_right_order, quat_lideal_right_transporter, quat_order_discriminant,
     quat_order_is_maximal, QuatLeftIdeal,
-};
-pub use ibz_rand::{
-    ibz_generate_random_prime, ibz_rand_interval, ibz_rand_interval_bits, ibz_rand_interval_i,
-    ibz_rand_interval_minm_m,
 };
 pub use integers::ibz_cornacchia_prime;
 pub use lat_ball::{quat_lattice_bound_parallelogram, quat_lattice_sample_from_ball};
