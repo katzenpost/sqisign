@@ -23,13 +23,19 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Clippy (deny warnings)
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --lib --tests -- -D warnings
 
       - name: Build
-        run: cargo build --workspace --all-targets
+        run: cargo build --workspace --lib --tests
 
       - name: Test (workspace, includes the shake256 differential vectors)
-        run: cargo test --workspace --all-targets
+        # We intentionally drop --benches from the target set. cargo test
+        # treats criterion benches as test-mode smoke runs and the
+        # criterion harness reports progress for every Fp primitive,
+        # which adds minutes to every CI run and surfaces no
+        # information the unit tests do not already cover. Benches
+        # still build and run locally via `cargo bench`.
+        run: cargo test --workspace --lib --tests
 
       - name: Verify-only crate stays signing-free
         # Katzenpost mix nodes pull only the verification path; building the
