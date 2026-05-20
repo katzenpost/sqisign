@@ -9,6 +9,7 @@ description = "SQIsign elliptic curve point operations, isogeny computation, pai
 [dependencies]
 sqisign-common.workspace = true
 sqisign-gf.workspace = true
+sqisign-mp.workspace = true
 
 [dev-dependencies]
 sqisign-vectors.workspace = true

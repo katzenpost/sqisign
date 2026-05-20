@@ -886,6 +886,7 @@ dependencies = [
  "proptest",
  "sqisign-common",
  "sqisign-gf",
+ "sqisign-mp",
  "sqisign-vectors",
 ]
 
