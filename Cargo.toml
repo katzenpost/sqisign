@@ -20,7 +20,16 @@ edition = "2021"
 rust-version = "1.94"
 license = "GPL-3.0-or-later"
 repository = "local"
-version = "0.0.0"
+# Pre-release. The semantics this version commits us to are:
+#   * KAT-equivalent to the upstream C reference at the commit pinned
+#     in UPSTREAM.md, at lvl1 only.
+#   * No API stability promise. Anything in any crate may move, rename,
+#     or change shape between 0.x releases.
+#   * No security promise. The library has not been audited. See
+#     SECURITY.md for the known threat-model caveats.
+# Bump to 0.1.0 (without -alpha) only after at least one external
+# review pass; bump to 1.0.0 only after a security audit.
+version = "0.1.0-alpha"
 
 [workspace.dependencies]
 # Internal crates referenced by path so the dependency graph mirrors the

@@ -22,6 +22,11 @@ the round-trip test does not require an upstream checkout.
 
 ## Status
 
+**Version `0.1.0-alpha`.** No API stability promise: anything in any
+crate may move, rename, or change shape between 0.x releases. No
+security promise either, until at least one external review pass and
+then an audit; see `SECURITY.md`.
+
 | Level   | Keygen | Sign | Verify | KAT |
 |---------|:------:|:----:|:------:|:---:|
 | lvl1    |   ✓    |  ✓   |   ✓    |  ✓  |

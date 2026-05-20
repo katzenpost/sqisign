@@ -875,7 +875,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
 name = "sqisign"
-version = "0.0.0"
+version = "0.1.0-alpha"
 dependencies = [
  "hex",
  "sqisign-sign",
@@ -884,7 +884,7 @@ dependencies = [
 
 [[package]]
 name = "sqisign-common"
-version = "0.0.0"
+version = "0.1.0-alpha"
 dependencies = [
  "aes",
  "criterion",
@@ -896,7 +896,7 @@ dependencies = [
 
 [[package]]
 name = "sqisign-ec"
-version = "0.0.0"
+version = "0.1.0-alpha"
 dependencies = [
  "criterion",
  "hex",
@@ -908,7 +908,7 @@ dependencies = [
 
 [[package]]
 name = "sqisign-ffi"
-version = "0.0.0"
+version = "0.1.0-alpha"
 dependencies = [
  "hex",
  "sqisign-common",
@@ -918,7 +918,7 @@ dependencies = [
 
 [[package]]
 name = "sqisign-gf"
-version = "0.0.0"
+version = "0.1.0-alpha"
 dependencies = [
  "criterion",
  "hex",
@@ -927,7 +927,7 @@ dependencies = [
 
 [[package]]
 name = "sqisign-hd"
-version = "0.0.0"
+version = "0.1.0-alpha"
 dependencies = [
  "hex",
  "sqisign-common",
@@ -937,7 +937,7 @@ dependencies = [
 
 [[package]]
 name = "sqisign-id2iso"
-version = "0.0.0"
+version = "0.1.0-alpha"
 dependencies = [
  "criterion",
  "hex",
@@ -953,7 +953,7 @@ dependencies = [
 
 [[package]]
 name = "sqisign-mp"
-version = "0.0.0"
+version = "0.1.0-alpha"
 dependencies = [
  "criterion",
  "hex",
@@ -962,7 +962,7 @@ dependencies = [
 
 [[package]]
 name = "sqisign-precomp"
-version = "0.0.0"
+version = "0.1.0-alpha"
 dependencies = [
  "hex",
  "serde_json",
@@ -974,7 +974,7 @@ dependencies = [
 
 [[package]]
 name = "sqisign-quaternion"
-version = "0.0.0"
+version = "0.1.0-alpha"
 dependencies = [
  "criterion",
  "hex",
@@ -988,7 +988,7 @@ dependencies = [
 
 [[package]]
 name = "sqisign-sign"
-version = "0.0.0"
+version = "0.1.0-alpha"
 dependencies = [
  "criterion",
  "hex",
@@ -1006,7 +1006,7 @@ dependencies = [
 
 [[package]]
 name = "sqisign-verify"
-version = "0.0.0"
+version = "0.1.0-alpha"
 dependencies = [
  "criterion",
  "hex",
