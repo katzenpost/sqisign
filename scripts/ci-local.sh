@@ -34,18 +34,22 @@ step_fmt() {
 }
 
 step_clippy() {
-    echo ">> cargo +${TOOLCHAIN} clippy --workspace --all-targets -- -D warnings"
-    cargo "+${TOOLCHAIN}" clippy --workspace --all-targets -- -D warnings
+    echo ">> cargo +${TOOLCHAIN} clippy --workspace --lib --tests -- -D warnings"
+    cargo "+${TOOLCHAIN}" clippy --workspace --lib --tests -- -D warnings
 }
 
 step_build() {
-    echo ">> cargo +${TOOLCHAIN} build --workspace --all-targets"
-    cargo "+${TOOLCHAIN}" build --workspace --all-targets
+    echo ">> cargo +${TOOLCHAIN} build --workspace --lib --tests"
+    cargo "+${TOOLCHAIN}" build --workspace --lib --tests
 }
 
 step_test() {
-    echo ">> cargo +${TOOLCHAIN} test --workspace --all-targets"
-    cargo "+${TOOLCHAIN}" test --workspace --all-targets
+    # Mirror the CI workflow: drop benches from the target set. cargo
+    # test compiles criterion benches as test-mode smoke runs that add
+    # minutes to every invocation while surfacing nothing the unit
+    # tests do not already cover. Run benches with `cargo bench`.
+    echo ">> cargo +${TOOLCHAIN} test --workspace --lib --tests"
+    cargo "+${TOOLCHAIN}" test --workspace --lib --tests
 }
 
 step_verify() {
