@@ -30,7 +30,7 @@
 package sqisign
 
 // #cgo LDFLAGS: ${SRCDIR}/../../../target/release/libsqisign_ffi.a -lm -ldl -lpthread
-// #include "../../../crates/sqisign-ffi/include/sqisign.h"
+// #include "sqisign.h"
 //
 // /* The Go-exported symbol the Rust FFI calls back into when it needs
 //    randomness. Declared here so we can pass its address as a
