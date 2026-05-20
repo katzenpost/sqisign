@@ -7,12 +7,14 @@ license.workspace = true
 description = "SQIsign (2,2)-isogenies in the theta model. Mirrors vendor/the-sqisign/src/hd."
 
 [dependencies]
-sqisign-common.workspace = true
+# sqisign-common is referenced only in a deferred-boundary doc note;
+# it will become a real dep when the randomised chain variant is wired.
 sqisign-gf.workspace = true
 sqisign-ec.workspace = true
 
 [dev-dependencies]
 sqisign-vectors.workspace = true
 hex.workspace = true
-proptest.workspace = true
-criterion.workspace = true
+# This unit ships differential vector tests only; no proptest, no
+# criterion benches (per the unit's scope). Re-add them when fuzz harnesses
+# or per-boundary benches land.
