@@ -12,7 +12,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use sqisign_common::CtrDrbg;
+use sqisign_common::{CtrDrbg, RngSource};
 
 fuzz_target!(|data: &[u8]| {
     // Need at least 48 bytes of entropy; pad deterministically if short.

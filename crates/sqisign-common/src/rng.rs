@@ -1,21 +1,45 @@
-//! The NIST CTR-DRBG, as the SQIsign reference uses it for deterministic
-//! KAT generation.
+//! Randomness abstraction and the NIST AES-256 CTR-DRBG.
 //!
-//! This is a faithful port of `src/common/ref/randombytes_ctrdrbg.c`: the
-//! AES-256-CTR_DRBG construction (SP 800-90A, no derivation function, no
-//! prediction resistance) exactly as the reference implements it, including
-//! its idiosyncrasies (the `reseed_counter` is tracked by the reference but
-//! never enforced, so it carries no observable behaviour and is omitted).
+//! The [`RngSource`] trait is the only RNG surface every other crate in
+//! this workspace knows about. Every signing-path primitive that needs
+//! randomness takes `&mut impl RngSource` and never sees a concrete
+//! implementation. Production callers wire in whatever they like (a
+//! future Rust port of the Katzenpost hpqc/rand library, an `OsRng`
+//! adapter, a hardware RNG, ...).
 //!
-//! The block-cipher core, AES-256 in ECB on a single block, is the audited
-//! RustCrypto `aes` crate rather than a bespoke reimplementation: AES is a
-//! standardized primitive and the plan's rule is wire-and-prove, not
-//! reinvent. The DRBG construction *around* it is ported here and proven
-//! bit-equal to the reference by the committed C-derived vectors
+//! [`CtrDrbg`] is the NIST AES-256-CTR_DRBG (SP 800-90A, no derivation
+//! function, no prediction resistance) as the SQIsign reference uses it
+//! to drive the KAT test vectors. It is a **KAT-only** primitive in this
+//! workspace: it exists exclusively so the differential tests against
+//! `vendor/the-sqisign` can replay the upstream KAT seeds bit-for-bit.
+//! The Katzenpost research team does not use NIST's DRBG in production
+//! (its backdoor history is the reason); production builds inject a
+//! different [`RngSource`] and never construct a [`CtrDrbg`].
+//!
+//! The block-cipher core, AES-256 in ECB on a single block, is the
+//! audited RustCrypto `aes` crate rather than a bespoke reimplementation:
+//! AES is a standardized primitive and the port's rule is wire-and-prove,
+//! not reinvent. The DRBG construction *around* it is ported here and
+//! proven bit-equal to the reference by the committed C-derived vectors
 //! (`tests/ctr_drbg_vectors.rs`).
 
 use aes::cipher::{Array, BlockCipherEncrypt, KeyInit};
 use aes::Aes256;
+
+/// The single abstraction over a byte source. Every RNG-driven primitive
+/// in this workspace (`ibz_rand_*`, `quat_represent_integer`, the
+/// randomized theta splitting, ...) takes `&mut impl RngSource`.
+///
+/// Mirrors the C reference's `randombytes(unsigned char *, size_t)` thunk
+/// in shape; the concrete RNG state is held by the caller and threaded
+/// explicitly, which is the difference that lets production swap NIST's
+/// CTR-DRBG out for something the project actually trusts.
+pub trait RngSource {
+    /// Fill `out` with fresh random bytes. Implementations must succeed
+    /// or panic; the SQIsign reference signature treats RNG failure as
+    /// unrecoverable.
+    fn fill(&mut self, out: &mut [u8]);
+}
 
 /// AES-256-ECB of one 16-byte block, matching the reference's
 /// `AES256_ECB(key, ctr, buffer)` (a single-block encrypt).
@@ -40,8 +64,13 @@ fn increment(v: &mut [u8; 16]) {
 }
 
 /// An AES-256 CTR-DRBG instance. Construct with [`CtrDrbg::new`] (the
-/// reference's `randombytes_init`), then draw bytes with [`CtrDrbg::fill`]
-/// (its `randombytes`). The state evolves after every draw.
+/// reference's `randombytes_init`), then draw bytes via the
+/// [`RngSource::fill`] impl (its `randombytes`). The state evolves after
+/// every draw.
+///
+/// **KAT-only.** Production builds wire a different [`RngSource`]; this
+/// type exists in the workspace so the upstream KAT seeds can be replayed
+/// in differential tests.
 pub struct CtrDrbg {
     key: [u8; 32],
     v: [u8; 16],
@@ -83,11 +112,13 @@ impl CtrDrbg {
         drbg.update(Some(&seed));
         drbg
     }
+}
 
+impl RngSource for CtrDrbg {
     /// `randombytes`: fill `out` from the counter stream, then run an update
     /// with no provided data. A zero-length request still performs that
     /// update, advancing the state, exactly as the reference does.
-    pub fn fill(&mut self, out: &mut [u8]) {
+    fn fill(&mut self, out: &mut [u8]) {
         let mut off = 0;
         while off < out.len() {
             increment(&mut self.v);
@@ -97,5 +128,14 @@ impl CtrDrbg {
             off += take;
         }
         self.update(None);
+    }
+}
+
+// Convenience: `&mut R` is itself an `RngSource` if `R` is. This lets
+// callers thread an existing RNG through nested helper calls without
+// reborrow ceremony.
+impl<R: RngSource + ?Sized> RngSource for &mut R {
+    fn fill(&mut self, out: &mut [u8]) {
+        (**self).fill(out)
     }
 }

@@ -17,9 +17,16 @@
 //! - [`hash::sha3_256`] / [`hash::sha3_384`] / [`hash::sha3_512`] are the
 //!   fixed-output SHA3 digests (`sqisign_common::sha3_256` etc.),
 //!   mirroring the reference's `sha3_256(out, in, inlen)` family.
-//! - [`rng::CtrDrbg`] is the NIST AES-256 CTR-DRBG
-//!   (`sqisign_common::ctr_drbg`), mirroring the reference's
-//!   `randombytes_init` / `randombytes`.
+//! - [`rng::RngSource`] is the byte-source trait every RNG-driven
+//!   primitive in this workspace takes; production callers wire any
+//!   implementation they trust (a future Rust port of Katzenpost's
+//!   hpqc/rand, an `OsRng` shim, a hardware RNG, ...).
+//! - [`rng::CtrDrbg`] is the NIST AES-256 CTR-DRBG, present **only** so
+//!   the differential tests can replay the upstream KAT seeds bit-for-bit.
+//!   It implements [`rng::RngSource`] so a KAT test constructs one and
+//!   hands `&mut drbg` to whatever RNG-driven boundary it exercises.
+//!   Production builds construct a different [`rng::RngSource`] and never
+//!   touch the NIST DRBG (its backdoor history is the reason).
 //! - [`mem::secure_clear`] is the optimiser-resistant memory wipe
 //!   (`sqisign_common::secure_clear`), mirroring the reference's
 //!   `sqisign_secure_clear`.
@@ -44,4 +51,4 @@ pub use hash::{
     Shake256Absorb, Shake256Squeeze,
 };
 pub use mem::secure_clear;
-pub use rng::CtrDrbg;
+pub use rng::{CtrDrbg, RngSource};

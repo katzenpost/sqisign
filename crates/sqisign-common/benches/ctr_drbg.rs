@@ -4,7 +4,7 @@
 //! the large ones.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
-use sqisign_common::CtrDrbg;
+use sqisign_common::{CtrDrbg, RngSource};
 
 /// Regression-gate self-test hook; see `benches/shake256.rs`.
 fn extra_passes() -> usize {

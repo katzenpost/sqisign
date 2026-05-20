@@ -9,7 +9,7 @@
 //! seeds diverge.
 
 use proptest::prelude::*;
-use sqisign_common::CtrDrbg;
+use sqisign_common::{CtrDrbg, RngSource};
 
 prop_compose! {
     fn ent()(v in proptest::collection::vec(any::<u8>(), 48)) -> [u8; 48] {

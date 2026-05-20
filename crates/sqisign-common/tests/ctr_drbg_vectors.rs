@@ -9,7 +9,7 @@
 //! it is the stateful DRBG path, evolving after every draw, that is tested,
 //! not a single call.
 
-use sqisign_common::CtrDrbg;
+use sqisign_common::{CtrDrbg, RngSource};
 use sqisign_vectors::{decode, load};
 
 const VECTORS: &str = concat!(
