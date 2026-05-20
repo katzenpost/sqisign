@@ -1,14 +1,19 @@
+//go:build linux && amd64
+
 // Package sqisign is a Go binding for the SQIsign level-1 signature
 // scheme, wrapping the sqisign-ffi crate at the repository root.
 //
-// The binding links against the staticlib emitted by
+// The binding links against a prebuilt sqisign-ffi staticlib that is
+// vendored under lib/<GOOS>_<GOARCH>/libsqisign_ffi.a. At present the
+// only supported target is linux/amd64; on every other platform the
+// stub file (see sqisign_unsupported.go) compiles in place and the
+// API returns ErrUnsupported.
+//
+// To refresh the vendored staticlib after a Rust-side change:
 //
 //	cargo build --release -p sqisign-ffi
-//
-// at ../../../target/release/libsqisign_ffi.a, resolved relative to
-// this source file. Users who keep this binding inside the sqisign
-// workspace get the link automatically; users who vendor the binding
-// elsewhere need to either copy the staticlib in or override CGO_LDFLAGS.
+//	cp target/release/libsqisign_ffi.a \
+//	   bindings/go/sqisign/lib/linux_amd64/libsqisign_ffi.a
 //
 // The C ABI guarantees that Rust panics never cross the boundary; every
 // entry point either returns 1 for success or 0 for any failure. The
@@ -29,7 +34,7 @@
 // production use.
 package sqisign
 
-// #cgo LDFLAGS: ${SRCDIR}/../../../target/release/libsqisign_ffi.a -lm -ldl -lpthread
+// #cgo LDFLAGS: ${SRCDIR}/lib/linux_amd64/libsqisign_ffi.a -lm -ldl -lpthread
 // #include "sqisign.h"
 //
 // /* The Go-exported symbol the Rust FFI calls back into when it needs

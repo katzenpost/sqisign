@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: (c) 2026 David Stainton
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+//go:build linux && amd64
+
 package sqisign
 
 // The Go-exported callback the Rust FFI invokes whenever it needs
