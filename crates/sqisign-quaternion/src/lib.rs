@@ -61,15 +61,51 @@
 //! they expose no observable computation beyond zero-initialization.
 
 #![forbid(unsafe_code)]
+// The quaternion module is a strict transcription of the C reference
+// (intbig.c, integers.c, algebra.c, finit.c, dim2.c, dim4.c, lattice.c,
+// ideal.c, normeq.c, hnf.c). We preserve the C control flow and the
+// quirks of the reference's mpz_t-on-mini-gmp arithmetic; clippy's
+// idiomatic-Rust lints would obscure that mirror.
+#![allow(clippy::needless_range_loop)]
+#![allow(clippy::nonminimal_bool)]
+#![allow(clippy::manual_memcpy)]
+#![allow(clippy::needless_borrows_for_generic_args)]
 
-mod algebra;
-mod ibz;
-mod integers;
+pub mod algebra;
+pub mod dim2;
+pub mod dim4;
+pub mod hnf;
+pub mod ibz;
+pub mod ideal;
+pub mod integers;
+pub mod lattice;
+pub mod normeq;
 
 pub use algebra::{
-    quat_alg_conj, quat_alg_coord_mul, quat_alg_elem_copy, quat_alg_elem_copy_ibz,
-    quat_alg_elem_mul_by_scalar, quat_alg_elem_set, quat_alg_equal_denom, quat_alg_mul,
-    quat_alg_norm, quat_alg_scalar, QuatAlg, QuatAlgElem,
+    quat_alg_add, quat_alg_conj, quat_alg_coord_mul, quat_alg_elem_copy, quat_alg_elem_copy_ibz,
+    quat_alg_elem_equal, quat_alg_elem_is_zero, quat_alg_elem_mul_by_scalar, quat_alg_elem_set,
+    quat_alg_equal_denom, quat_alg_make_primitive, quat_alg_mul, quat_alg_norm, quat_alg_normalize,
+    quat_alg_scalar, quat_alg_sub, QuatAlg, QuatAlgElem,
+};
+pub use dim2::{
+    ibz_2x2_mul_mod, ibz_mat_2x2_add, ibz_mat_2x2_copy, ibz_mat_2x2_det_from_ibz, ibz_mat_2x2_eval,
+    ibz_mat_2x2_inv_mod, ibz_mat_2x2_new, ibz_mat_2x2_set, ibz_vec_2_new, ibz_vec_2_set, IbzMat2x2,
+    IbzVec2,
+};
+pub use dim4::{
+    ibz_inv_dim4_make_coeff_mpm, ibz_inv_dim4_make_coeff_pmp, ibz_mat_4x4_copy, ibz_mat_4x4_equal,
+    ibz_mat_4x4_eval, ibz_mat_4x4_eval_t, ibz_mat_4x4_gcd, ibz_mat_4x4_identity,
+    ibz_mat_4x4_inv_with_det_as_denom, ibz_mat_4x4_is_identity, ibz_mat_4x4_mul,
+    ibz_mat_4x4_negate, ibz_mat_4x4_new, ibz_mat_4x4_scalar_div, ibz_mat_4x4_scalar_mul,
+    ibz_mat_4x4_transpose, ibz_mat_4x4_zero, ibz_vec_4_add, ibz_vec_4_content, ibz_vec_4_copy,
+    ibz_vec_4_copy_ibz, ibz_vec_4_is_zero, ibz_vec_4_linear_combination, ibz_vec_4_negate,
+    ibz_vec_4_new, ibz_vec_4_scalar_div, ibz_vec_4_scalar_mul, ibz_vec_4_set, ibz_vec_4_sub,
+    quat_qf_eval, IbzMat4x4, IbzVec4,
+};
+pub use hnf::{
+    ibz_centered_mod, ibz_conditional_assign, ibz_mat_4x4_is_hnf, ibz_mat_4xn_hnf_mod_core,
+    ibz_mod_not_zero, ibz_vec_4_copy_mod, ibz_vec_4_linear_combination_mod,
+    ibz_vec_4_scalar_mul_mod, ibz_xgcd, ibz_xgcd_with_u_not_0,
 };
 pub use ibz::{
     ibz_abs, ibz_add, ibz_bitsize, ibz_cmp, ibz_cmp_int32, ibz_const_one, ibz_const_three,
@@ -79,4 +115,22 @@ pub use ibz::{
     ibz_set, ibz_size_in_base, ibz_sqrt, ibz_sqrt_floor, ibz_sqrt_mod_p, ibz_sub, ibz_to_digits,
     ibz_two_adic, Ibz,
 };
+pub use ideal::{
+    quat_lideal_add, quat_lideal_class_gram, quat_lideal_conjugate_without_hnf, quat_lideal_copy,
+    quat_lideal_create, quat_lideal_create_principal, quat_lideal_equals, quat_lideal_generator,
+    quat_lideal_inter, quat_lideal_inverse_lattice_without_hnf, quat_lideal_mul, quat_lideal_norm,
+    quat_lideal_right_order, quat_lideal_right_transporter, quat_order_discriminant,
+    quat_order_is_maximal, QuatLeftIdeal,
+};
 pub use integers::ibz_cornacchia_prime;
+pub use lattice::{
+    quat_lattice_add, quat_lattice_alg_elem_mul, quat_lattice_conjugate_without_hnf,
+    quat_lattice_contains, quat_lattice_dual_without_hnf, quat_lattice_equal, quat_lattice_gram,
+    quat_lattice_hnf, quat_lattice_inclusion, quat_lattice_index, quat_lattice_intersect,
+    quat_lattice_mat_alg_coord_mul_without_hnf, quat_lattice_mul, quat_lattice_reduce_denom,
+    QuatLattice,
+};
+pub use normeq::{
+    quat_change_to_O0_basis, quat_lattice_O0_set, quat_lattice_O0_set_extremal,
+    quat_order_elem_create, QuatPExtremalMaximalOrder,
+};

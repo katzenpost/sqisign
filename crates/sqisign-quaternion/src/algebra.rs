@@ -10,10 +10,15 @@
 use num_bigint::BigInt;
 use num_traits::{One, Zero};
 
-use crate::ibz::{
-    ibz_abs, ibz_add, ibz_copy_digits as _ibz_copy_digits, ibz_div, ibz_gcd, ibz_mul, ibz_neg,
-    ibz_set, ibz_sub, Ibz,
+use crate::dim4::{
+    ibz_vec_4_add, ibz_vec_4_content, ibz_vec_4_is_zero, ibz_vec_4_scalar_div,
+    ibz_vec_4_scalar_mul, ibz_vec_4_sub,
 };
+use crate::ibz::{
+    ibz_abs, ibz_add, ibz_cmp, ibz_const_zero, ibz_copy_digits as _ibz_copy_digits, ibz_div,
+    ibz_gcd, ibz_mul, ibz_neg, ibz_set, ibz_sub, Ibz,
+};
+use crate::lattice::{quat_lattice_contains, QuatLattice};
 
 /// `quat_alg_t`: the quaternion algebra ramified at `p` (and infinity).
 ///
@@ -305,9 +310,100 @@ pub fn quat_alg_elem_mul_by_scalar(res: &mut QuatAlgElem, scalar: &Ibz, elem: &Q
     res.denom = elem.denom.clone();
 }
 
+/// `quat_alg_add(res, a, b)`: sum of two algebra elements, written into
+/// `res` with a common denominator.
+pub fn quat_alg_add(res: &mut QuatAlgElem, a: &QuatAlgElem, b: &QuatAlgElem) {
+    let mut res_a = QuatAlgElem::new();
+    let mut res_b = QuatAlgElem::new();
+    quat_alg_equal_denom(&mut res_a, &mut res_b, a, b);
+    res.denom = res_a.denom.clone();
+    ibz_vec_4_add(&mut res.coord, &res_a.coord, &res_b.coord);
+}
+
+/// `quat_alg_sub(res, a, b)`.
+pub fn quat_alg_sub(res: &mut QuatAlgElem, a: &QuatAlgElem, b: &QuatAlgElem) {
+    let mut res_a = QuatAlgElem::new();
+    let mut res_b = QuatAlgElem::new();
+    quat_alg_equal_denom(&mut res_a, &mut res_b, a, b);
+    res.denom = res_a.denom.clone();
+    ibz_vec_4_sub(&mut res.coord, &res_a.coord, &res_b.coord);
+}
+
+/// `quat_alg_normalize(x)`: divide content of coord and denom by their
+/// joint gcd, then sign-flip so the denominator is positive.
+pub fn quat_alg_normalize(x: &mut QuatAlgElem) {
+    let mut gcd = Ibz::zero();
+    ibz_vec_4_content(&mut gcd, &x.coord);
+    let mut t = Ibz::zero();
+    ibz_gcd(&mut t, &gcd, &x.denom);
+    gcd = t;
+    let mut q = Ibz::zero();
+    let mut r = Ibz::zero();
+    ibz_div(&mut q, &mut r, &x.denom, &gcd);
+    x.denom = q;
+    let cloned_coord = clone_coord(&x.coord);
+    let _ = ibz_vec_4_scalar_div(&mut x.coord, &gcd, &cloned_coord);
+    // sign = 2 * (0 > cmp(0, denom)) - 1, i.e. -1 if denom > 0 else 1.
+    // Wait, that's backwards. Let me re-check: the C is
+    //   ibz_set(&sign, 2 * (0 > ibz_cmp(&ibz_const_zero, &(x->denom))) - 1);
+    // ibz_cmp(zero, denom) > 0 iff zero > denom iff denom < 0. The outer
+    // `0 > ...` makes this: ibz_cmp(zero, denom) < 0, i.e. zero < denom
+    // iff denom > 0. So sign = 1 if denom > 0, else -1.
+    //
+    // Hmm wait again. `0 > cmp(zero, denom)`: that's "cmp result negative",
+    // which means zero < denom, i.e. denom > 0. So sign = 2*1 - 1 = 1 when
+    // denom > 0, else 2*0 - 1 = -1.
+    //
+    // We want: if denom < 0, negate both. So sign should be -1 when denom < 0,
+    // matching the formula. Correct.
+    let cmp = ibz_cmp(&ibz_const_zero(), &x.denom);
+    let pred = if 0 > cmp { 1 } else { 0 };
+    let mut sign = Ibz::zero();
+    ibz_set(&mut sign, 2 * pred - 1);
+    let cloned_coord = clone_coord(&x.coord);
+    ibz_vec_4_scalar_mul(&mut x.coord, &sign, &cloned_coord);
+    let mut tmp = Ibz::zero();
+    ibz_mul(&mut tmp, &sign, &x.denom);
+    x.denom = tmp;
+}
+
+/// `quat_alg_elem_is_zero(x)`.
+pub fn quat_alg_elem_is_zero(x: &QuatAlgElem) -> i32 {
+    ibz_vec_4_is_zero(&x.coord)
+}
+
+/// `quat_alg_elem_equal(a, b)`.
+pub fn quat_alg_elem_equal(a: &QuatAlgElem, b: &QuatAlgElem) -> i32 {
+    let mut diff = QuatAlgElem::new();
+    quat_alg_sub(&mut diff, a, b);
+    quat_alg_elem_is_zero(&diff)
+}
+
+/// `quat_alg_make_primitive(primitive_x, content, x, order)`.
+pub fn quat_alg_make_primitive(
+    primitive_x: &mut crate::dim4::IbzVec4,
+    content: &mut Ibz,
+    x: &QuatAlgElem,
+    order: &QuatLattice,
+) {
+    let ok = quat_lattice_contains(Some(primitive_x), order, x);
+    assert!(ok != 0, "quat_alg_make_primitive: x must be in order");
+    ibz_vec_4_content(content, primitive_x);
+    let mut r = Ibz::zero();
+    for i in 0..4 {
+        let saved = primitive_x[i].clone();
+        ibz_div(&mut primitive_x[i], &mut r, &saved, content);
+    }
+}
+
+fn clone_coord(c: &[Ibz; 4]) -> [Ibz; 4] {
+    [c[0].clone(), c[1].clone(), c[2].clone(), c[3].clone()]
+}
+
 // Suppress unused-import lints on items used only by intra-crate callers.
 #[doc(hidden)]
 #[allow(dead_code)]
 fn _silence_unused() {
     let _ = _ibz_copy_digits;
+    let _ = ibz_abs;
 }
