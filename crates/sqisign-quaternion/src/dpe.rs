@@ -228,9 +228,8 @@ pub fn dpe_set_z(x: &mut Dpe, y: &Ibz) {
     // full-precision double (which would overflow f64 for >1024-bit
     // magnitudes). The C reference uses `mpz_get_d_2exp(&e, y)` for the
     // same purpose; mini-gmp behaves identically.
-    let mant_unsigned = top_53_bits_as_normalized_f64(
-        mag.iter_u64_digits().collect::<Vec<u64>>().as_slice(),
-    );
+    let mant_unsigned =
+        top_53_bits_as_normalized_f64(mag.iter_u64_digits().collect::<Vec<u64>>().as_slice());
     let signed = if matches!(sign, Sign::Minus) {
         -mant_unsigned
     } else {
@@ -257,8 +256,8 @@ fn top_53_bits_as_normalized_f64(limbs_le: &[u64]) -> f64 {
     // Top 53 bits in [2^52, 2^53), then divide by 2^53 to land in
     // [0.5, 1). For a multi-limb magnitude, the top bits straddle the
     // boundary between the high limb and the limb below it.
-    let clz = high.leading_zeros() as u32;
-    let high_bits = (64 - clz) as u32; // count of significant bits in high limb
+    let clz = high.leading_zeros();
+    let high_bits = 64 - clz; // count of significant bits in high limb
     let target_bits: u32 = 53;
     let mantissa_u: u64;
     if high_bits >= target_bits {
@@ -277,7 +276,7 @@ fn top_53_bits_as_normalized_f64(limbs_le: &[u64]) -> f64 {
     // mantissa_u now sits in [2^52, 2^53). Divide by 2^53 to land in
     // [0.5, 1).
     debug_assert!(
-        (1u64 << 52) <= mantissa_u && mantissa_u < (1u64 << 53),
+        ((1u64 << 52)..(1u64 << 53)).contains(&mantissa_u),
         "mantissa out of [2^52, 2^53)"
     );
     (mantissa_u as f64) / (1u64 << 53) as f64

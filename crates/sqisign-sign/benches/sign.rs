@@ -17,23 +17,21 @@ fn bench_sign(c: &mut Criterion) {
     let mut sk_template = SecretKey::new();
     assert_eq!(protocols_keygen(&mut drbg, &mut pk, &mut sk_template), 1);
 
+    // The DRBG now sits in the state protocols_sign would see immediately
+    // after a real keypair generation. Snapshot it; each iteration clones
+    // this template so the signer always consumes the byte stream it
+    // expects. Re-seeding from scratch would feed protocols_sign the
+    // keygen's byte budget, which trips the divisibility debug_assert
+    // deep in the signing loop.
+    let drbg_template = drbg.clone();
+
     let message = b"sqisign bench: deterministic 32-byte payload     ";
 
     let mut group = c.benchmark_group("sqisign_sign");
     group.sample_size(20);
     group.bench_function("protocols_sign_lvl1", |b| {
         b.iter(|| {
-            // Fresh DRBG per iteration so the signer's byte stream is
-            // identical each pass. Cloning the secret key keeps the
-            // template untouched.
-            let mut drbg = CtrDrbg::new(&entropy, None);
-            // Burn the keygen's worth of DRBG draws so the signer is
-            // seeded the way protocols_sign would see it after a real
-            // keypair generation. (We skip the keypair work, but mirror
-            // its byte budget by drawing the same prefix.) For the bench
-            // we just reseed and accept that the byte stream differs
-            // from a full keypair-then-sign run; what we measure is the
-            // sign-call hot loop, not the DRBG advance.
+            let mut drbg = drbg_template.clone();
             let mut sk = sk_template.clone();
             let mut sig = Signature::zero();
             let ok = protocols_sign(&mut drbg, &mut sig, &pk, &mut sk, message);

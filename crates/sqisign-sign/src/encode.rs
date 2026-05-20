@@ -83,7 +83,7 @@ fn decode_digits(x: &mut [u64], enc: &[u8]) {
 /// reference's static `ibz_to_bytes`.
 fn ibz_to_bytes(enc: &mut [u8], x: &Ibz, sgn: bool) {
     let nbytes = enc.len();
-    let digits = (nbytes + DIGIT_BYTES - 1) / DIGIT_BYTES;
+    let digits = nbytes.div_ceil(DIGIT_BYTES);
     let mut d = vec![0u64; digits];
     if ibz_cmp(x, &ibz_const_zero()) >= 0 {
         ibz_to_digits(&mut d, x);
@@ -106,7 +106,7 @@ fn ibz_to_bytes(enc: &mut [u8], x: &Ibz, sgn: bool) {
 fn ibz_from_bytes(x: &mut Ibz, enc: &[u8], sgn: bool) {
     let nbytes = enc.len();
     assert!(nbytes > 0);
-    let digits = (nbytes + DIGIT_BYTES - 1) / DIGIT_BYTES;
+    let digits = nbytes.div_ceil(DIGIT_BYTES);
     let mut d = vec![0u64; digits];
     decode_digits(&mut d, enc);
     if sgn && (enc[nbytes - 1] >> 7) != 0 {
@@ -115,7 +115,9 @@ fn ibz_from_bytes(x: &mut Ibz, enc: &[u8], sgn: bool) {
         let s = DIGIT_BYTES - 1 - (digits * DIGIT_BYTES - nbytes);
         debug_assert!(s < DIGIT_BYTES);
         let shift = 8 * s;
-        let mask: u64 = (!0u64).wrapping_shr(shift as u32).wrapping_shl(shift as u32);
+        let mask: u64 = (!0u64)
+            .wrapping_shr(shift as u32)
+            .wrapping_shl(shift as u32);
         d[digits - 1] |= mask;
         for v in d.iter_mut() {
             *v = !*v;
@@ -204,7 +206,7 @@ pub fn secret_key_from_bytes(sk: &mut SecretKey, pk: &mut PublicKey, enc: &[u8; 
     }
     debug_assert_eq!(off, SECRETKEY_BYTES);
 
-    sk.curve = pk.curve.clone();
+    sk.curve = pk.curve;
     ec_curve_to_basis_2f_from_hint(
         &mut sk.canonical_basis,
         &mut sk.curve,

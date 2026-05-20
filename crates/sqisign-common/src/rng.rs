@@ -71,6 +71,11 @@ fn increment(v: &mut [u8; 16]) {
 /// **KAT-only.** Production builds wire a different [`RngSource`]; this
 /// type exists in the workspace so the upstream KAT seeds can be replayed
 /// in differential tests.
+///
+/// `Clone` is intentional: bench harnesses snapshot the post-keygen
+/// state and replay it per iteration so the signer always sees the
+/// byte stream it would see after a real keypair generation.
+#[derive(Clone)]
 pub struct CtrDrbg {
     key: [u8; 32],
     v: [u8; 16],

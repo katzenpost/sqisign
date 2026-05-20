@@ -113,7 +113,11 @@ pub fn quat_lideal_prime_norm_reduced_equivalent<R: RngSource>(
     let mut remainder = Ibz::zero();
     let mut adjusted_norm = Ibz::zero();
 
-    ibz_mul(&mut adjusted_norm, &lideal.lattice.denom, &lideal.lattice.denom);
+    ibz_mul(
+        &mut adjusted_norm,
+        &lideal.lattice.denom,
+        &lideal.lattice.denom,
+    );
 
     let mut ctr = 0i32;
 

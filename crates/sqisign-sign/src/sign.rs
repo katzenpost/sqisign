@@ -11,7 +11,7 @@ use sqisign_common::RngSource;
 use sqisign_ec::{
     copy_basis, copy_curve, copy_point, ec_dbl_iter, ec_dbl_iter_basis, ec_eval_even,
     ec_eval_small_chain, ec_iso_eval, ec_isomorphism, ec_ladder3pt, ec_mul, ec_normalize_curve,
-    EcBasis, EcCurve, EcIsogEven, EcPoint, EcIsom, NWORDS_ORDER, TORSION_EVEN_POWER,
+    EcBasis, EcCurve, EcIsogEven, EcIsom, EcPoint, NWORDS_ORDER, TORSION_EVEN_POWER,
 };
 use sqisign_gf::fp2_copy;
 use sqisign_hd::{
@@ -29,15 +29,16 @@ use sqisign_precomp::{
 };
 use sqisign_quaternion::dim2::{ibz_vec_2_new, IbzVec2};
 use sqisign_quaternion::{
-    ibz_cmp, ibz_const_one, ibz_const_two, ibz_const_zero, ibz_copy_digits, ibz_div,
-    ibz_invmod, ibz_is_one, ibz_mul, ibz_pow, ibz_set, ibz_sub, ibz_to_digits, ibz_two_adic,
-    quat_alg_conj, quat_alg_make_primitive, quat_alg_norm, quat_lattice_conjugate_without_hnf,
-    quat_lattice_intersect, quat_lattice_sample_from_ball, quat_lideal_create,
-    quat_lideal_inter, quat_lideal_prime_norm_reduced_equivalent,
-    quat_sampling_random_ideal_O0_given_norm, Ibz, QuatAlgElem, QuatLattice, QuatLeftIdeal,
-    QuatRepresentIntegerParams,
+    ibz_cmp, ibz_const_one, ibz_const_two, ibz_const_zero, ibz_copy_digits, ibz_div, ibz_invmod,
+    ibz_is_one, ibz_mul, ibz_pow, ibz_set, ibz_sub, ibz_to_digits, ibz_two_adic, quat_alg_conj,
+    quat_alg_make_primitive, quat_alg_norm, quat_lattice_conjugate_without_hnf,
+    quat_lattice_intersect, quat_lattice_sample_from_ball, quat_lideal_create, quat_lideal_inter,
+    quat_lideal_prime_norm_reduced_equivalent, quat_sampling_random_ideal_O0_given_norm, Ibz,
+    QuatAlgElem, QuatLattice, QuatLeftIdeal, QuatRepresentIntegerParams,
 };
-use sqisign_verify::{hash_to_challenge, PublicKey, Signature, SECURITY_BITS, SQISIGN_RESPONSE_LENGTH};
+use sqisign_verify::{
+    hash_to_challenge, PublicKey, Signature, SECURITY_BITS, SQISIGN_RESPONSE_LENGTH,
+};
 
 use crate::keygen::SecretKey;
 
@@ -74,14 +75,8 @@ fn commit<R: RngSource>(
         order: &EXTREMAL_ORDERS[0],
         algebra: &QUATALG_PINFTY,
     };
-    let mut found = quat_sampling_random_ideal_O0_given_norm(
-        rng,
-        lideal_com,
-        &COM_DEGREE,
-        1,
-        &ri_params,
-        None,
-    );
+    let mut found =
+        quat_sampling_random_ideal_O0_given_norm(rng, lideal_com, &COM_DEGREE, 1, &ri_params, None);
     if found != 0 {
         found = quat_lideal_prime_norm_reduced_equivalent(
             rng,
@@ -172,7 +167,11 @@ fn compute_response_quat_element<R: RngSource>(
         &lat_commit,
     );
 
-    ibz_mul(lattice_content, &lideal_chall_secret.norm, &lideal_commit.norm);
+    ibz_mul(
+        lattice_content,
+        &lideal_chall_secret.norm,
+        &lideal_commit.norm,
+    );
     sample_response(rng, resp_quat, &lattice_hom_chall_to_com, lattice_content);
 }
 
@@ -222,7 +221,12 @@ fn compute_random_aux_norm_and_helpers(
     let mut norm_d = Ibz::zero();
     let mut tmp = Ibz::zero();
 
-    quat_alg_norm(&mut degree_full_resp, &mut norm_d, resp_quat, &QUATALG_PINFTY);
+    quat_alg_norm(
+        &mut degree_full_resp,
+        &mut norm_d,
+        resp_quat,
+        &QUATALG_PINFTY,
+    );
     debug_assert!(ibz_is_one(&norm_d) != 0);
     let cur = degree_full_resp.clone();
     ibz_div(&mut degree_full_resp, remain, &cur, lattice_content);
@@ -250,7 +254,10 @@ fn compute_random_aux_norm_and_helpers(
 
     let pow_dim2_deg_resp =
         (SQISIGN_RESPONSE_LENGTH as i32) - (exp_diadic as i32) - (sig.backtracking as i32);
-    debug_assert!(pow_dim2_deg_resp >= 0, "pow_dim2_deg_resp must be non-negative");
+    debug_assert!(
+        pow_dim2_deg_resp >= 0,
+        "pow_dim2_deg_resp must be non-negative"
+    );
     ibz_pow(remain, &ibz_const_two(), pow_dim2_deg_resp as u32);
     ibz_sub(random_aux_norm, remain, &degree_odd_resp);
 
@@ -328,19 +335,52 @@ fn compute_dim2_isogeny_challenge<R: RngSource>(
     let mut scalar = vec![0u64; NWORDS_ORDER];
     ibz_to_digits(&mut scalar, degree_resp_inv);
 
-    let cur = dim_two_ker.t1.p2.clone();
-    ec_mul(&mut dim_two_ker.t1.p2, &scalar, reduced_order, &cur, &mut ecom_x_eaux.e2);
-    let cur = dim_two_ker.t2.p2.clone();
-    ec_mul(&mut dim_two_ker.t2.p2, &scalar, reduced_order, &cur, &mut ecom_x_eaux.e2);
-    let cur = dim_two_ker.t1m2.p2.clone();
-    ec_mul(&mut dim_two_ker.t1m2.p2, &scalar, reduced_order, &cur, &mut ecom_x_eaux.e2);
+    let cur = dim_two_ker.t1.p2;
+    ec_mul(
+        &mut dim_two_ker.t1.p2,
+        &scalar,
+        reduced_order,
+        &cur,
+        &mut ecom_x_eaux.e2,
+    );
+    let cur = dim_two_ker.t2.p2;
+    ec_mul(
+        &mut dim_two_ker.t2.p2,
+        &scalar,
+        reduced_order,
+        &cur,
+        &mut ecom_x_eaux.e2,
+    );
+    let cur = dim_two_ker.t1m2.p2;
+    ec_mul(
+        &mut dim_two_ker.t1m2.p2,
+        &scalar,
+        reduced_order,
+        &cur,
+        &mut ecom_x_eaux.e2,
+    );
 
-    let cur = dim_two_ker.t1.clone();
-    double_couple_point_iter(&mut dim_two_ker.t1, exp_diadic_val_full_resp as u32, &cur, &ecom_x_eaux);
-    let cur = dim_two_ker.t2.clone();
-    double_couple_point_iter(&mut dim_two_ker.t2, exp_diadic_val_full_resp as u32, &cur, &ecom_x_eaux);
-    let cur = dim_two_ker.t1m2.clone();
-    double_couple_point_iter(&mut dim_two_ker.t1m2, exp_diadic_val_full_resp as u32, &cur, &ecom_x_eaux);
+    let cur = dim_two_ker.t1;
+    double_couple_point_iter(
+        &mut dim_two_ker.t1,
+        exp_diadic_val_full_resp as u32,
+        &cur,
+        &ecom_x_eaux,
+    );
+    let cur = dim_two_ker.t2;
+    double_couple_point_iter(
+        &mut dim_two_ker.t2,
+        exp_diadic_val_full_resp as u32,
+        &cur,
+        &ecom_x_eaux,
+    );
+    let cur = dim_two_ker.t1m2;
+    double_couple_point_iter(
+        &mut dim_two_ker.t1m2,
+        exp_diadic_val_full_resp as u32,
+        &cur,
+        &ecom_x_eaux,
+    );
 
     let mut pushed_points: [ThetaCouplePoint; 3] = [
         ThetaCouplePoint::zero(),
@@ -412,7 +452,7 @@ fn compute_small_chain_isogeny_signature(
     copy_point(&mut points[2], &b_chall_2.PmQ);
 
     let drop = (pow_dim2_deg_resp as i32) + (HD_EXTRA_TORSION as i32);
-    let bas_clone = b_chall_2.clone();
+    let bas_clone = *b_chall_2;
     ec_dbl_iter_basis(b_chall_2, drop, &bas_clone, e_chall_2);
 
     let mut ker = EcPoint::zero();
@@ -443,17 +483,17 @@ fn compute_challenge_codomain_signature(
     let mut bas_sk = EcBasis::zero();
     copy_basis(&mut bas_sk, &sk.canonical_basis);
 
-    phi_chall.curve = sk.curve.clone();
+    phi_chall.curve = sk.curve;
     phi_chall.length = (TORSION_EVEN_POWER as i32 - sig.backtracking as i32) as u32;
 
-    let mut sk_curve = sk.curve.clone();
+    let mut sk_curve = sk.curve;
     ec_ladder3pt(
         &mut phi_chall.kernel,
         &sig.chall_coeff,
         &bas_sk.P,
         &bas_sk.Q,
         &bas_sk.PmQ,
-        &mut sk_curve,
+        &sk_curve,
     );
 
     let mut kernel = phi_chall.kernel;
@@ -554,12 +594,17 @@ pub fn protocols_sign<R: RngSource>(
 
     let mut ecom_eaux = ThetaCoupleCurveWithBasis::zero();
     let mut eaux2_echall2 = ThetaCoupleCurveWithBasis::zero();
-    let mut e_chall = sk.curve.clone();
+    let mut e_chall = sk.curve;
 
     let mut pow_dim2_deg_resp: u8;
 
     while !ret {
-        ret = commit(rng, &mut ecom_eaux.e1, &mut ecom_eaux.b1, &mut lideal_commit);
+        ret = commit(
+            rng,
+            &mut ecom_eaux.e1,
+            &mut ecom_eaux.b1,
+            &mut lideal_commit,
+        );
         if !ret {
             continue;
         }
@@ -611,9 +656,9 @@ pub fn protocols_sign<R: RngSource>(
                 + (HD_EXTRA_TORSION as i32)
                 + (sig.two_resp_length as i32);
             let drop = (TORSION_EVEN_POWER as i32) - reduced_order;
-            let b1_clone = ecom_eaux.b1.clone();
+            let b1_clone = ecom_eaux.b1;
             ec_dbl_iter_basis(&mut ecom_eaux.b1, drop, &b1_clone, &mut ecom_eaux.e1);
-            let b2_clone = ecom_eaux.b2.clone();
+            let b2_clone = ecom_eaux.b2;
             ec_dbl_iter_basis(&mut ecom_eaux.b2, drop, &b2_clone, &mut ecom_eaux.e2);
 
             ret = compute_dim2_isogeny_challenge(
@@ -633,11 +678,11 @@ pub fn protocols_sign<R: RngSource>(
             copy_curve(&mut eaux2_echall2.e2, &ecom_eaux.e1);
             reduced_order = sig.two_resp_length as i32;
             let drop = (TORSION_EVEN_POWER as i32) - reduced_order;
-            let b1_clone = ecom_eaux.b1.clone();
+            let b1_clone = ecom_eaux.b1;
             ec_dbl_iter_basis(&mut eaux2_echall2.b1, drop, &b1_clone, &mut ecom_eaux.e1);
             // (The C reference applies the same double-iter twice; we
             // mirror that verbatim to keep the exit basis identical.)
-            let b1_clone = ecom_eaux.b1.clone();
+            let b1_clone = ecom_eaux.b1;
             ec_dbl_iter_basis(&mut eaux2_echall2.b1, drop, &b1_clone, &mut ecom_eaux.e1);
             copy_basis(&mut eaux2_echall2.b2, &eaux2_echall2.b1);
         }
@@ -675,5 +720,9 @@ pub fn protocols_sign<R: RngSource>(
     );
 
     let _ = SECURITY_BITS;
-    if ret { 1 } else { 0 }
+    if ret {
+        1
+    } else {
+        0
+    }
 }

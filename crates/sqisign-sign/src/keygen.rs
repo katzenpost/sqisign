@@ -5,8 +5,8 @@ use sqisign_common::RngSource;
 use sqisign_ec::{ec_curve_to_basis_2f_to_hint, EcBasis, EcCurve, TORSION_EVEN_POWER};
 use sqisign_gf::fp2_is_one;
 use sqisign_id2iso::{
-    change_of_basis_matrix_tate, dim2id2iso_arbitrary_isogeny_evaluation,
-    QUAT_EQUIV_BOUND_COEFF, QUAT_REPRESENT_INTEGER_PRIMALITY_ITER,
+    change_of_basis_matrix_tate, dim2id2iso_arbitrary_isogeny_evaluation, QUAT_EQUIV_BOUND_COEFF,
+    QUAT_REPRESENT_INTEGER_PRIMALITY_ITER,
 };
 use sqisign_precomp::{EXTREMAL_ORDERS, QUATALG_PINFTY, SEC_DEGREE};
 use sqisign_quaternion::dim2::{ibz_mat_2x2_new, IbzMat2x2};
