@@ -914,6 +914,8 @@ name = "sqisign-ffi"
 version = "0.0.0"
 dependencies = [
  "hex",
+ "sqisign-common",
+ "sqisign-sign",
  "sqisign-verify",
 ]
 

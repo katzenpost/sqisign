@@ -10,6 +10,8 @@ description = "C ABI bindings for sqisign verify (Katzenpost-facing)."
 crate-type = ["cdylib", "staticlib", "lib"]
 
 [dependencies]
+sqisign-common.workspace = true
+sqisign-sign.workspace = true
 sqisign-verify.workspace = true
 
 [dev-dependencies]
