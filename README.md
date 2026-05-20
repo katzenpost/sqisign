@@ -164,6 +164,21 @@ are turned into a `0` return via `catch_unwind` at every FFI boundary.
 
 A complete C example is at `crates/sqisign-ffi/examples/`.
 
+### From Go and Python
+
+Thin idiomatic wrappers around the same C ABI live under `bindings/`:
+
+```sh
+cargo build --release -p sqisign-ffi
+cd bindings/go     && go test ./sqisign/...      # Go binding, cgo + static link
+cd bindings/python && python3 -m pytest tests/   # Python binding, ctypes
+```
+
+See [`bindings/README.md`](bindings/README.md) for the API surface and
+build details. Both bindings are intentionally thin: they expose only
+`keygen` / `sign` / `verify` and the byte-size constants, and inherit
+every threat-model caveat the Rust port has (see `SECURITY.md`).
+
 ## Architecture
 
 The port mirrors the C reference's module structure:

@@ -24,3 +24,10 @@ Cargo.lock.orig
 **/fuzz/corpus/
 **/fuzz/artifacts/
 **/fuzz/Cargo.lock
+
+# Python binding build artefacts
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+
+# Go binding test artefacts (cgo build cache lives in $GOCACHE outside the repo)
