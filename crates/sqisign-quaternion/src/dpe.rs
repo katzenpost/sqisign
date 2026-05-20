@@ -223,25 +223,75 @@ pub fn dpe_set_z(x: &mut Dpe, y: &Ibz) {
     }
     let bits = y.0.bits() as usize; // bit length of magnitude
     let mag = y.0.magnitude();
-    // mpz_get_d on the (possibly truncated) magnitude. We emulate it by
-    // extracting the top 53 significant bits of the magnitude.
-    let mant_unsigned = top_bits_as_f64(mag.iter_u64_digits().collect::<Vec<u64>>().as_slice());
+    // mpz_get_d_2exp equivalent: extract top 53 bits of the magnitude
+    // directly into a [0.5, 1) mantissa, without ever building the
+    // full-precision double (which would overflow f64 for >1024-bit
+    // magnitudes). The C reference uses `mpz_get_d_2exp(&e, y)` for the
+    // same purpose; mini-gmp behaves identically.
+    let mant_unsigned = top_53_bits_as_normalized_f64(
+        mag.iter_u64_digits().collect::<Vec<u64>>().as_slice(),
+    );
     let signed = if matches!(sign, Sign::Minus) {
         -mant_unsigned
     } else {
         mant_unsigned
     };
-    // frexp on the truncated double; we want the [1/2, 1) mantissa. The
-    // tmp_exp returned by frexp is discarded by mini-gmp, matching the
-    // exponent to mpz_sizeinbase.
-    let (m, _tmp_exp) = frexp(signed);
-    x.mant = m;
+    x.mant = signed;
     x.exp = bits as i32;
+}
+
+/// Extract the top 53 significant bits of a positive integer (given as
+/// little-endian u64 limbs) and return them as an f64 in `[0.5, 1)`.
+/// Matches the result of `mpz_get_d_2exp` in GMP: the magnitude is
+/// scaled to land in the standard normalized range, with the implicit
+/// exponent recorded separately by the caller (here, `y.0.bits()`).
+fn top_53_bits_as_normalized_f64(limbs_le: &[u64]) -> f64 {
+    let n = limbs_le.len();
+    if n == 0 {
+        return 0.0;
+    }
+    let high = limbs_le[n - 1];
+    if high == 0 {
+        return top_53_bits_as_normalized_f64(&limbs_le[..n - 1]);
+    }
+    // Top 53 bits in [2^52, 2^53), then divide by 2^53 to land in
+    // [0.5, 1). For a multi-limb magnitude, the top bits straddle the
+    // boundary between the high limb and the limb below it.
+    let clz = high.leading_zeros() as u32;
+    let high_bits = (64 - clz) as u32; // count of significant bits in high limb
+    let target_bits: u32 = 53;
+    let mantissa_u: u64;
+    if high_bits >= target_bits {
+        let shift = high_bits - target_bits;
+        mantissa_u = high >> shift;
+    } else if n >= 2 {
+        let need = target_bits - high_bits;
+        let lo_shift = 64 - need;
+        // high<<need carries the top high_bits bits; (next>>lo_shift) brings
+        // in the topmost `need` bits of the limb below.
+        mantissa_u = (high << need) | (limbs_le[n - 2] >> lo_shift);
+    } else {
+        // Single limb with fewer than 53 significant bits.
+        mantissa_u = high << (target_bits - high_bits);
+    }
+    // mantissa_u now sits in [2^52, 2^53). Divide by 2^53 to land in
+    // [0.5, 1).
+    debug_assert!(
+        (1u64 << 52) <= mantissa_u && mantissa_u < (1u64 << 53),
+        "mantissa out of [2^52, 2^53)"
+    );
+    (mantissa_u as f64) / (1u64 << 53) as f64
 }
 
 /// Compute `mpz_get_d` for a magnitude represented as little-endian
 /// `u64` limbs. Returns the (non-negative) double-precision approximation.
 /// Mirrors the limb-walk in `mini-gmp.c::mpz_get_d`.
+///
+/// Retained but unused: superseded by [`top_53_bits_as_normalized_f64`]
+/// which never builds the full-precision double and therefore handles
+/// magnitudes whose bit count exceeds `f64::MAX_EXP` (1024). Kept here
+/// for reference parity with the C `mpz_get_d` walk.
+#[allow(dead_code)]
 fn top_bits_as_f64(limbs_le: &[u64]) -> f64 {
     let n = limbs_le.len();
     if n == 0 {

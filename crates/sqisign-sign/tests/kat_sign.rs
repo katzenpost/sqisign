@@ -169,7 +169,6 @@ fn run_one(e: &KatEntry) -> Result<(), String> {
 }
 
 #[test]
-#[ignore = "KAT round-trip; run with --ignored"]
 fn kat_lvl1_count_0() {
     let entries = parse_kat(&kat_path());
     let e = entries
@@ -180,7 +179,7 @@ fn kat_lvl1_count_0() {
 }
 
 #[test]
-#[ignore = "KAT round-trip; full battery"]
+#[ignore = "full KAT battery (~12s in release); count=0 is run by default"]
 fn kat_lvl1_full() {
     let entries = parse_kat(&kat_path());
     assert!(!entries.is_empty(), "KAT file empty");
