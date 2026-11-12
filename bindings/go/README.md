@@ -38,11 +38,14 @@ archive references `_64`-suffixed names (`fstat64`, `open64`, ...)
 that the Alpine linker cannot resolve.
 
 ```sh
-rustup target add x86_64-unknown-linux-musl
-cargo build --release --target x86_64-unknown-linux-musl -p sqisign-ffi
-cp target/x86_64-unknown-linux-musl/release/libsqisign_ffi.a \
-   bindings/go/sqisign/lib/linux_amd64/libsqisign_ffi.a
+scripts/build-go-staticlib.sh
 ```
+
+The script also strips the LLVM bitcode sections (`.llvmbc`,
+`.llvmcmd`) that Rust std's prebuilt rlibs carry into the archive:
+Go 1.26.11 and later refuse to link a cgo archive containing them
+("disallowed LTO section"). It records the toolchain versions used
+in `lib/linux_amd64/BUILDINFO`.
 
 ### Adding a new target
 

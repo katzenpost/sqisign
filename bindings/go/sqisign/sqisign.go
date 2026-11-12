@@ -11,9 +11,7 @@
 //
 // To refresh the vendored staticlib after a Rust-side change:
 //
-//	cargo build --release -p sqisign-ffi
-//	cp target/release/libsqisign_ffi.a \
-//	   bindings/go/sqisign/lib/linux_amd64/libsqisign_ffi.a
+//	scripts/build-go-staticlib.sh
 //
 // The C ABI guarantees that Rust panics never cross the boundary; every
 // entry point either returns 1 for success or 0 for any failure. The
